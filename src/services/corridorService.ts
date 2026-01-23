@@ -3,8 +3,17 @@ import path from 'path';
 // @ts-ignore
 import JSONStream from 'JSONStream';
 
-// DO NOT redeclare __dirname. Just use the Node global.
+// DO NOT redeclare __dirname. Use the Node-provided one.
 
+// Path to the small project-only GeoJSON (runtime location is dist/services)
+const geoJsonPath = path.join(
+  __dirname,
+  '..',    // dist/
+  '..',    // project root
+  'src',
+  'data',
+  'project_route.geojson'
+);
 
 // Your 92 route IDs from Excel (project routes only)
 const PROJECT_ROUTE_IDS = [
@@ -38,15 +47,13 @@ let filteredCorridors: FilteredCorridors = {};
 
 
 export async function loadCorridorsFromGeoJSON(): Promise<void> {
-  const geoJsonPath = path.join(__dirname, '..', '..', 'src', 'data', 'corridor_route.geojson');
-  console.log('Loading corridor_route.geojson using streaming...');
-  
+  console.log('Loading project_route.geojson using streaming...');
   return new Promise((resolve, reject) => {
     const projectRouteIdSet = new Set(PROJECT_ROUTE_IDS);
     let totalRoutes = 0;
     let projectCount = 0;
-    const startTime = Date.now();
 
+    const startTime = Date.now();
     const stream = fs.createReadStream(geoJsonPath);
     const parser = JSONStream.parse('features.*');
 

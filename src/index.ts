@@ -37,7 +37,7 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(projectRootDir, '../public')));
+app.use(express.static(path.join(__dirname, '../public')));
 
 let lastTrafficUpdateTime: Date | null = null;
 
@@ -99,12 +99,12 @@ function findRoute(routeId: number): any {
 
 // Home page - Overview
 app.get('/', (req: any, res: any) => {
-  res.sendFile(path.join(projectRootDir, '../public/index.html'));
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Tracking page - Individual route tracking
 app.get('/tracking', (req: any, res: any) => {
-  res.sendFile(path.join(projectRootDir, '../public/tracking.html'));
+  res.sendFile(path.join(__dirname, '../public/tracking.html'));
 });
 
 // ===== API ENDPOINTS =====
