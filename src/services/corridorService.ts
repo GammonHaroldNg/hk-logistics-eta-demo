@@ -149,3 +149,12 @@ export function getFilteredCorridors(): FilteredCorridors {
 export function getCorridorByRouteId(routeId: number): CorridorFeature | null {
   return allCorridors[routeId] || null;
 }
+
+// corridorService.ts
+
+export function addCorridors(newCorridors: FilteredCorridors): void {
+  for (const [routeIdStr, feature] of Object.entries(newCorridors)) {
+    const routeId = Number(routeIdStr);
+    allCorridors[routeId] = feature as CorridorFeature;
+  }
+}

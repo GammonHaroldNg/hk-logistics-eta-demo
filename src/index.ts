@@ -9,6 +9,8 @@ const projectRootDir = path.resolve(); // or appRootDir
 import { corridors, updateCorridorState } from './services/tdas';
 import { tickSimulation } from './services/simulation';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
+import { fetchAdditionalCorridorsFromWFS } from './services/wfsService';
+
 
 import {
   initializeTrucks,
@@ -69,18 +71,25 @@ function findRoute(routeId: number): any {
 // Load corridors on startup
 (async () => {
   try {
+    // 1) Local small GeoJSON (project routes)
     await loadCorridorsFromGeoJSON();
-    console.log('✓ Corridors loaded');
+    console.log('✓ Corridors loaded from project_route.geojson');
 
+    // 2) CSDI WFS enrichment (all CENTERLINE routes in HK BBOX)
+    await fetchAdditionalCorridorsFromWFS();
+    console.log('✓ Corridors enriched from CSDI WFS');
+
+    // 3) Live traffic state, limited to routes we actually have
     await updateTrafficData();
 
-    // Build filtered corridor set: TDAS routes ∪ project routes
+    // 4) Build filtered corridor set: TDAS routes ∪ project routes
     const tdasRouteIds = new Set<number>();
     for (const routeIdStr of Object.keys(corridors)) {
       tdasRouteIds.add(Number(routeIdStr));
     }
     buildFilteredCorridors(tdasRouteIds);
 
+    // 5) Start timers
     setInterval(updateTrafficData, 60000);
     setInterval(() => tickSimulation(1), 1000);
     console.log('✓ Truck simulation started');
@@ -93,7 +102,6 @@ function findRoute(routeId: number): any {
     process.exit(1);
   }
 })();
-
 
 // ===== PAGE ROUTES =====
 

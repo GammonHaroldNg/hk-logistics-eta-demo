@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
     "rootDir": "./src",
     "outDir": "./dist",
+    "module": "commonjs",
+    "moduleResolution": "node",
     "target": "ES2019",
     "types": ["node"],
     "sourceMap": true,
@@ -12,10 +12,11 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "strict": true,
-    "lib": ["esnext"],
+    "lib": ["esnext", "dom"],
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": false,
     "resolveJsonModule": true
-  }
+  },
+  "include": ["src/**/*"]
 }
