@@ -1,20 +1,5 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "src/data/project_route.geojson"
-        ]
-      }
-    },
-    {
-      "src": "public/**",
-      "use": "@vercel/static"
-    }
-  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "api/index.js" },
     { "src": "/tracking", "dest": "public/tracking.html" },
