@@ -1,0 +1,16 @@
+{
+  "routes": [
+    {
+      "id": 94765,
+      "name": "Route A - Central",
+      "description": "Central business district",
+      "primarySegmentIds": [1000, 1001, 1002]
+    },
+    {
+      "id": 96983,
+      "name": "Route B - Kowloon",
+      "description": "Kowloon corridor",
+      "primarySegmentIds": [2000, 2001, 2002]
+    }
+  ]
+}

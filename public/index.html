@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HK Logistics - Overview</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <link rel="stylesheet" href="/css/common.css">
+    <link rel="stylesheet" href="/css/overview.css">
+    <link rel="stylesheet" href="/css/tracking.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>🚚 HK Logistics - Overview</h1>
+            <div class="nav">
+                <button class="btn btn-mode active" id="projectBtn" onclick="setMode('focused')">
+                    📍 Project Routes
+                </button>
+                <button class="btn btn-mode" id="allBtn" onclick="setMode('overview')">
+                    🗺️ All Routes
+                </button>
+                <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
+                <a href="/tracking" class="btn btn-secondary">🚛 Tracking</a>
+            </div>
+        </header>
+        
+        <main>
+            <div id="map">
+                <div class="map-loading">
+                    <div style="font-size: 48px; margin-bottom: 10px;">🗺️</div>
+                    <div>Initializing map and routes...</div>
+                </div>
+            </div>
+            
+            <div class="stats-panel">
+              <!-- Overview mode panel -->
+              <div id="overviewPanel">
+                <h2>📊 Traffic Status</h2>
+
+                <div class="stats-grid">
+                  <div class="stat-item">
+                    <span class="stat-label">Green</span>
+                    <span class="stat-value" id="greenCount">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Yellow</span>
+                    <span class="stat-value" id="yellowCount">-</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">Red</span>
+                    <span class="stat-value" id="redCount">-</span>
+                  </div>
+                </div>
+
+                <div style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+                  <h3 id="routeTitle">📍 Project Routes</h3>
+                  <div class="route-list" id="routeList">
+                    <div class="loading">
+                      Click a route on the map to see details.
+                    </div>
+                  </div>
+                </div>
+
+                <div class="last-update">
+                  <strong>Last Update:</strong><br>
+                  <span id="lastUpdate">-</span>
+                </div>
+              </div>
+
+              <!-- Project simulation panel -->
+              <div id="projectPanel" style="display:none;">
+                <div class="tracking-panel">
+                  <div class="eta-info">
+                    <h2>Concrete Delivery Overview</h2>
+                    <div class="route-info-content" id="projectRouteInfo">
+                      Select a project route to start simulation.
+                    </div>
+                  </div>
+
+                  <div class="vehicle-list">
+                    <h2>Active Concrete Vehicles</h2>
+                    <div class="vehicle-list-content" id="projectVehicleList">
+                      <!-- truck list goes here -->
+                    </div>
+                  </div>
+
+                  <div class="eta-info">
+                    <h2>Performance vs Target</h2>
+                    <div class="route-info-content" id="projectPerformance">
+                      <!-- delivered vs target, delay estimate -->
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+        </main>
+    </div>
+    
+    <script>
+      const API_BASE = ''; // use same-origin
+      let map = null;
+      let routeLayer = null;
+      let allRoutes = [];
+      let currentMode = 'focused';
+      let trafficDataMap = {};  // { [routeId]: { state, speed } }
+
+      window.addEventListener('DOMContentLoaded', () => {
+        console.log('✓ Page loaded');
+        console.log('API_BASE:', API_BASE);
+
+        initMap();
+        loadTrafficData();
+        loadAndDisplayRoutes();
+
+        setInterval(loadTrafficData, 60000);
+      });
+
+      function initMap() {
+        try {
+          map = L.map('map').setView([22.3193, 114.1694], 11);
+          L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap © CartoDB',
+            maxZoom: 19
+          }).addTo(map);
+
+          routeLayer = L.featureGroup().addTo(map);
+
+          console.log('✓ Map initialized with grey style');
+        } catch (error) {
+          console.error('✗ Map init error:', error);
+        }
+      }
+
+      function setMode(mode) {
+        currentMode = mode;
+        console.log('🔄 Switching to mode:', mode);
+
+        document.getElementById('projectBtn').classList.toggle('active', mode === 'focused');
+        document.getElementById('allBtn').classList.toggle('active', mode === 'overview');
+
+        const title = mode === 'overview' ? '🗺️ All HK Routes' : '📍 Project Routes';
+        document.getElementById('routeTitle').textContent = title;
+
+        const overviewPanel = document.getElementById('overviewPanel');
+        const projectPanel = document.getElementById('projectPanel');
+
+        if (mode === 'overview') {
+          overviewPanel.style.display = 'block';
+          projectPanel.style.display = 'none';
+        } else {
+          overviewPanel.style.display = 'none';
+          projectPanel.style.display = 'block';
+        }
+
+        loadAndDisplayRoutes();
+      }
+
+
+      async function loadTrafficData() {
+        try {
+          console.log('→ Fetching /api/traffic...');
+          const response = await fetch(`${API_BASE}/api/traffic`);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+
+          // Build traffic map and counters only from routes with TDAS
+          trafficDataMap = {};
+          let green = 0, yellow = 0, red = 0;
+
+          if (data.stateMap) {
+            for (const [routeId, state] of Object.entries(data.stateMap)) {
+              trafficDataMap[routeId] = state;
+              if (state.state === 'GREEN') green++;
+              else if (state.state === 'YELLOW') yellow++;
+              else if (state.state === 'RED') red++;
+            }
+          }
+
+          document.getElementById('greenCount').textContent = green;
+          document.getElementById('yellowCount').textContent = yellow;
+          document.getElementById('redCount').textContent = red;
+
+          if (data.lastUpdate) {
+            const time = new Date(data.lastUpdate).toLocaleTimeString('en-HK');
+            document.getElementById('lastUpdate').textContent = time;
+          }
+        } catch (error) {
+          console.error('✗ Traffic error:', error);
+          document.getElementById('lastUpdate').textContent = 'Error';
+        }
+      }
+
+      async function loadAndDisplayRoutes() {
+        try {
+          console.log(`→ Loading routes in ${currentMode} mode...`);
+
+          const url = `${API_BASE}/api/routes?mode=${currentMode}`;
+          console.log(`→ Fetching ${url}...`);
+          const response = await fetch(url);
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const geoData = await response.json();
+          console.log('✓ Routes data:', geoData.features?.length, 'routes');
+
+          if (!geoData.features || geoData.features.length === 0) {
+            const routeList = document.getElementById('routeList');
+            routeList.innerHTML = '<div class="loading">No routes</div>';
+            return;
+          }
+
+          allRoutes = geoData.features;
+
+          if (routeLayer) routeLayer.clearLayers();
+
+          let routesAdded = 0;
+          const projectRoutes = [];
+
+          for (const feature of geoData.features) {
+            try {
+              if (!feature.geometry) continue;
+              if (feature.geometry.type !== 'LineString' &&
+                  feature.geometry.type !== 'MultiLineString') continue;
+
+              const routeId = feature.properties?.ROUTEID;
+              const isProject = feature.properties?.ISPROJECT;
+
+              // Get TDAS from trafficDataMap first, fallback to properties
+              const trafficState = trafficDataMap[routeId];
+              const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
+              const speed = trafficState?.speed ??
+                            (typeof feature.properties?.TRAFFICSPEED === 'number'
+                              ? feature.properties.TRAFFICSPEED
+                              : null);
+              const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
+
+              const color = getColorForState(state, isProject, hasTdas);
+              const weight = isProject ? 5 : 2;
+              const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
+
+              let allCoords = [];
+              if (feature.geometry.type === 'LineString') {
+                allCoords = [feature.geometry.coordinates];
+              } else if (feature.geometry.type === 'MultiLineString') {
+                allCoords = feature.geometry.coordinates;
+              }
+
+              for (const coords of allCoords) {
+                if (!coords || coords.length === 0) continue;
+                const latLngs = coords.map(coord => [coord[1], coord[0]]);
+
+                L.polyline(latLngs, {
+                  color,
+                  weight,
+                  opacity
+                }).addTo(routeLayer);
+
+                routesAdded++;
+              }
+
+              if (isProject) {
+                projectRoutes.push({
+                  ...feature,
+                  properties: {
+                    ...feature.properties,
+                    TDASSTATE: state,
+                    TRAFFICSPEED: speed,
+                    HASTDASDATA: hasTdas
+                  }
+                });
+              }
+            } catch (e) {
+              console.warn('Error drawing route:', e);
+            }
+          }
+
+          console.log('✓ Routes drawn on map:', routesAdded, 'segments');
+
+          const routeList = document.getElementById('routeList');
+          let displayRoutes = [];
+
+          if (currentMode === 'focused') {
+            displayRoutes = projectRoutes.slice(0, 15);
+          } else {
+            displayRoutes = geoData.features
+              .filter(f => true) // all routes, we will handle NO DATA in UI
+              .slice(0, 15);
+          }
+
+          if (displayRoutes.length === 0) {
+            routeList.innerHTML = '<div class="loading">No routes with traffic data</div>';
+            return;
+          }
+
+          routeList.innerHTML = displayRoutes
+            .map(route => {
+              const routeId = route.properties.ROUTEID;
+              const routeName = route.properties.NAME || `Route ${routeId}`;
+              const traffic = trafficDataMap[routeId];
+              const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
+              const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
+                                    : 'NO DATA';
+              const speed = hasTdas && typeof (traffic?.speed ?? route.properties.TRAFFICSPEED) === 'number'
+                ? (traffic?.speed ?? route.properties.TRAFFICSPEED)
+                : null;
+
+              const statusClass = hasTdas
+                ? `status-${state.toLowerCase()}`
+                : 'status-gray';
+
+              const speedText = hasTdas && speed !== null
+                ? `${speed.toFixed(1)} km/h`
+                : '-';
+
+              return `
+                <div class="route-item" onclick="onRouteClick(${routeId})">
+                  <div class="route-id">${routeName} (ID: ${routeId})</div>
+                  <div class="route-status">
+                    <span class="status-badge ${statusClass}">${state}</span>
+                    <span style="margin-left: 8px;">${speedText}</span>
+                  </div>
+                </div>
+              `;
+            })
+            .join('');
+        } catch (error) {
+          console.error('✗ Routes error:', error);
+          const routeList = document.getElementById('routeList');
+          routeList.innerHTML = '<div class="loading">Error: ' + error.message + '</div>';
+        }
+      }
+
+      function getColorForState(state, isProject, hasTdas) {
+        // No TDAS: neutral grey
+        if (!hasTdas) return '#00B0F0';
+
+        if (state === 'GREEN') return '#22c55e';
+        if (state === 'YELLOW') return '#eab308';
+        if (state === 'RED') return '#ef4444';
+        return '#4b5563'; // unknown
+      }
+
+      function refreshData() {
+        console.log('🔄 Refreshing data...');
+        loadTrafficData();
+        loadAndDisplayRoutes();
+      }
+
+      function goToTracking(routeId) {
+        window.location.href = `/tracking?route=${routeId}`;
+      }
+    </script>
+
+</body>
+</html>

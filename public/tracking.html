@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HK Logistics - Vehicle Tracking</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/common.css">
+  <link rel="stylesheet" href="css/tracking.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Vehicle Tracking</h1>
+      <nav class="nav">
+        <select id="routeSelect" class="select">
+          <option value="">Select Route...</option>
+        </select>
+        <button id="refreshBtn" class="btn btn-primary">Refresh</button>
+        <a href="index.html" class="btn btn-secondary">Back to Overview</a>
+      </nav>
+    </header>
+
+    <main>
+      <div id="map" class="map"></div>
+      <div class="tracking-panel">
+        <div class="vehicle-list">
+          <h2>Vehicles on Route</h2>
+          <div id="vehicleList" class="vehicle-list-content"></div>
+        </div>
+        <div class="eta-info">
+          <h2>Route Info</h2>
+          <div id="routeInfo" class="route-info-content"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
+  <script type="module" src="js/tracking.js"></script>
+</body>
+</html>

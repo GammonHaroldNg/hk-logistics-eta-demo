@@ -1,0 +1,77 @@
+main {
+  gap: 0;
+}
+
+.map {
+  flex: 2;
+}
+
+.tracking-panel {
+  flex: 1;
+  background: white;
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.vehicle-list,
+.eta-info {
+  flex: 1;
+  min-height: 0;
+}
+
+.vehicle-list h2,
+.eta-info h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+}
+
+.vehicle-list-content {
+  overflow-y: auto;
+  max-height: calc(100% - 36px);
+}
+
+.vehicle-item {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background: var(--light);
+}
+
+.vehicle-item-id {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.vehicle-item-eta {
+  font-size: 12px;
+  color: var(--secondary);
+  margin-top: 4px;
+}
+
+.route-info-content {
+  padding: 12px;
+  background: var(--light);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.route-info-item {
+  margin-bottom: 8px;
+}
+
+.route-info-label {
+  color: var(--secondary);
+  font-size: 12px;
+}
+
+.route-info-value {
+  font-weight: 600;
+}
