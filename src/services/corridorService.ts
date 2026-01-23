@@ -3,17 +3,14 @@ import path from 'path';
 // @ts-ignore
 import JSONStream from 'JSONStream';
 
-// DO NOT redeclare __dirname. Use the Node-provided one.
-
-// Path to the small project-only GeoJSON (runtime location is dist/services)
+// Replace any __dirname-based path with process.cwd()
 const geoJsonPath = path.join(
-  __dirname,
-  '..',    // dist/
-  '..',    // project root
+  process.cwd(),
   'src',
   'data',
   'project_route.geojson'
 );
+
 
 // Your 92 route IDs from Excel (project routes only)
 const PROJECT_ROUTE_IDS = [
