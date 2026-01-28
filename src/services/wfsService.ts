@@ -17,20 +17,37 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
   let startIndex = 0;
   let totalAdded = 0;
 
+  // For Vercel: cap max number of pages
+  const MAX_PAGES = 2; // adjust later if it works reliably
+  let pageCount = 0;
+
   while (true) {
+    if (pageCount >= MAX_PAGES) {
+      console.log('Reached MAX_PAGES for WFS, stopping.');
+      break;
+    }
+    pageCount++;
+
     const url =
       `${BASE_WFS_URL}?${COMMON_QUERY}` +
       `&maxFeatures=${PAGE_SIZE}&startIndex=${startIndex}`;
 
     console.log(`Fetching WFS page: startIndex=${startIndex} ...`);
 
-    const res = await fetch(url);
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch (err) {
+      console.error('Error calling WFS:', err);
+      // Bubble up to outer try/catch in index.ts, where we log and continue
+      throw err;
+    }
+
     if (!res.ok) {
       throw new Error(`WFS request failed: ${res.status} ${res.statusText}`);
     }
 
     const geojson = (await res.json()) as any;
-
     const features: any[] = Array.isArray(geojson.features)
       ? geojson.features
       : [];
@@ -45,7 +62,7 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
 
     for (const feature of features) {
       const props = feature.properties || {};
-      const routeId = props.ROUTE_ID; // integer field from CSDI CENTERLINE
+      const routeId = props.ROUTE_ID;
       if (!routeId) continue;
 
       batch[routeId] = {
@@ -66,7 +83,6 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
       `✓ Page startIndex=${startIndex}: added ${pageAdded} routes (total so far: ${totalAdded})`
     );
 
-    // Advance to next page
     startIndex += PAGE_SIZE;
   }
 

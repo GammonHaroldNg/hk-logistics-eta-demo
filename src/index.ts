@@ -71,37 +71,48 @@ function findRoute(routeId: number): any {
 // Load corridors on startup
 (async () => {
   try {
-    // 1) Local small GeoJSON (project routes)
+    // 1) Always load local project GeoJSON
     await loadCorridorsFromGeoJSON();
-    console.log('✓ Corridors loaded from project_route.geojson');
+    console.log(
+      '✓ Corridors loaded from project_route.geojson, count:',
+      Object.keys(getFilteredCorridors()).length
+    );
 
-    // 2) CSDI WFS enrichment (all CENTERLINE routes in HK BBOX)
-    await fetchAdditionalCorridorsFromWFS();
-    console.log('✓ Corridors enriched from CSDI WFS');
+    // 2) Try WFS enrichment, but don't fail hard if it breaks on Vercel
+    try {
+      await fetchAdditionalCorridorsFromWFS();
+      console.log(
+        '✓ Corridors enriched from CSDI WFS, count:',
+        Object.keys(getFilteredCorridors()).length
+      );
+    } catch (wfsErr) {
+      console.error('⚠ WFS enrichment skipped due to error:', wfsErr);
+      // continue with local-only corridors
+    }
 
-    // 3) Live traffic state, limited to routes we actually have
+    // 3) Traffic + filtered corridors
     await updateTrafficData();
 
-    // 4) Build filtered corridor set: TDAS routes ∪ project routes
     const tdasRouteIds = new Set<number>();
     for (const routeIdStr of Object.keys(corridors)) {
       tdasRouteIds.add(Number(routeIdStr));
     }
     buildFilteredCorridors(tdasRouteIds);
+    console.log(
+      '✓ Filtered corridors ready, count:',
+      Object.keys(getFilteredCorridors()).length
+    );
 
-    // 5) Start timers
+    // 4) Start timers
     setInterval(updateTrafficData, 60000);
     setInterval(() => tickSimulation(1), 1000);
-    console.log('✓ Truck simulation started');
-
-    if (process.env.DEBUG === 'true') {
-      runTests();
-    }
+    console.log('✓ Truck simulation started (with current corridors)');
   } catch (err) {
-    console.error('Failed to initialize:', err);
-    process.exit(1);
+    console.error('Failed to initialize app:', err);
+    // Do NOT call process.exit(1) on Vercel
   }
 })();
+
 
 // ===== PAGE ROUTES =====
 
