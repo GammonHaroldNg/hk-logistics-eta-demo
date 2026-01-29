@@ -388,29 +388,42 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
 async function updateTrafficData() {
   try {
     const speedMap = await fetchTrafficSpeedMap();
-    let updateCount = 0;
+    console.log('TDAS speedMap size:', speedMap.size);
 
-    const allCorridors = getFilteredCorridors(); // will be filtered later
+    const allCorridors = getFilteredCorridors();
+    console.log(
+      'Corridors available when updating traffic:',
+      Object.keys(allCorridors).length
+    );
+    console.log(
+      'Sample TDAS ids:',
+      Array.from(speedMap.keys()).slice(0, 10)
+    );
+    console.log(
+      'Sample corridor ids:',
+      Object.keys(allCorridors).slice(0, 10)
+    );
+
+
+    let updateCount = 0;
 
     for (const [segmentId, data] of speedMap.entries()) {
       const routeId = Number(segmentId);
       const state = speedToState(data.speed);
 
-      if (allCorridors[routeId]) {   // only route IDs that exist
+      if (allCorridors[routeId]) { // only route IDs that exist
         updateCorridorState(routeId, state, data.speed);
         updateCount++;
       }
     }
 
     lastTrafficUpdateTime = new Date();
-
-    if (updateCount > 0) {
-      console.log(`✓ Updated traffic state for ${updateCount} routes`);
-    }
+    console.log(`✓ Updated traffic state for ${updateCount} routes`);
   } catch (err) {
     console.error('Error updating traffic:', err);
   }
 }
+
 
 // Start server only in local/dev (not on Vercel)
 if (process.env.VERCEL !== 'true') {
