@@ -389,11 +389,23 @@ async function updateTrafficData() {
     const speedMap = await fetchTrafficSpeedMap();
     console.log('TDAS speedMap size:', speedMap.size);
 
-    const allCorridors = getAllCorridors();   // <-- changed
+    const allCorridors = getAllCorridors();
+    const corridorIds = Object.keys(allCorridors).map(Number);
     console.log(
       'Corridors available when updating traffic:',
-      Object.keys(allCorridors).length
+      corridorIds.length
     );
+    console.log(
+      'Sample corridor IDs:',
+      corridorIds.slice(0, 10)
+    );
+
+    const sampleSegments: number[] = [];
+    for (const [segId] of speedMap.entries()) {
+      sampleSegments.push(Number(segId));
+      if (sampleSegments.length >= 10) break;
+    }
+    console.log('Sample TDAS ids:', sampleSegments);
 
     let updateCount = 0;
     for (const [segmentId, data] of speedMap.entries()) {
