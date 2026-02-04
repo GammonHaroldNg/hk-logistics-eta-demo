@@ -1,24 +1,26 @@
-// src/services/wfsService.ts
 import { addCorridors } from './corridorService';
 
 const BASE_WFS_URL =
   'https://portal.csdi.gov.hk/server/services/common/td_rcd_1638949160594_2844/MapServer/WFSServer';
 
+const FILTER_XML =
+  "<Filter><Intersects><PropertyName>SHAPE</PropertyName>" +
+  "<gml:Envelope srsName='EPSG:4326'>" +
+  "<gml:lowerCorner>22.15 113.81</gml:lowerCorner>" +
+  "<gml:upperCorner>22.62 114.45</gml:upperCorner>" +
+  '</gml:Envelope></Intersects></Filter>';
+
 const COMMON_QUERY =
   'service=wfs&request=GetFeature&typenames=CENTERLINE' +
   '&outputFormat=geojson&srsName=EPSG:4326' +
-  '&filter=<Filter><Intersects><PropertyName>SHAPE</PropertyName>' +
-  "<gml:Envelope srsName='EPSG:4326'><gml:lowerCorner>22.15 113.81</gml:lowerCorner>" +
-  '<gml:upperCorner>22.62 114.45</gml:upperCorner></gml:Envelope></Intersects></Filter>';
+  '&filter=' + encodeURIComponent(FILTER_XML);
 
-const PAGE_SIZE = 10000; // matches CSDI limit
+const PAGE_SIZE = 5000;   // safer than 10000 on Vercel
+const MAX_PAGES = 2;      // keep for now; adjust later if stable
 
 export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
   let startIndex = 0;
   let totalAdded = 0;
-
-  // For Vercel: cap max number of pages
-  const MAX_PAGES = 2; // adjust later if it works reliably
   let pageCount = 0;
 
   while (true) {
@@ -39,7 +41,6 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
       res = await fetch(url);
     } catch (err) {
       console.error('Error calling WFS:', err);
-      // Bubble up to outer try/catch in index.ts, where we log and continue
       throw err;
     }
 
@@ -69,9 +70,9 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
         type: feature.type,
         properties: {
           ...props,
-          IS_FROM_WFS: true
+          IS_FROM_WFS: true,
         },
-        geometry: feature.geometry
+        geometry: feature.geometry,
       };
       pageAdded++;
     }

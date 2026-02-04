@@ -117,6 +117,12 @@ export async function loadCorridorsFromGeoJSON(): Promise<void> {
   });
 }
 
+// After allCorridors / filteredCorridors declarations
+export function getAllCorridors(): FilteredCorridors {
+  return allCorridors;
+}
+
+
 export function buildFilteredCorridors(tdasRouteIds: Set<number>): void {
   const projectSet = new Set(PROJECT_ROUTE_IDS);
   const result: FilteredCorridors = {};

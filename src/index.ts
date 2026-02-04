@@ -12,6 +12,7 @@ import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
 import { fetchAdditionalCorridorsFromWFS } from './services/wfsService';
 
 
+
 import {
   initializeTrucks,
   updateTruckProgress,
@@ -58,14 +59,8 @@ const projectRouteIds = new Set([
 
 // ===== HELPER FUNCTION =====
 function findRoute(routeId: number): any {
-  const allCorridors = getFilteredCorridors();
-  for (const [key, value] of Object.entries(allCorridors)) {
-    const corridor = value as any;
-    if (corridor && corridor.properties && corridor.properties.ROUTEID === routeId) {
-      return corridor;
-    }
-  }
-  return null;
+  const allCorridors = getAllCorridors();
+  return allCorridors[routeId] || null;
 }
 
 // Load corridors on startup
@@ -78,21 +73,24 @@ function findRoute(routeId: number): any {
       Object.keys(getFilteredCorridors()).length
     );
 
-    // 2) Try WFS enrichment, but don't fail hard if it breaks on Vercel
+    // 2) First TDAS update – guarantees project routes get TDAS
+    await updateTrafficData();
+
+    // 3) Try WFS enrichment, but don't fail hard if it breaks on Vercel
     try {
       await fetchAdditionalCorridorsFromWFS();
       console.log(
         '✓ Corridors enriched from CSDI WFS, count:',
         Object.keys(getFilteredCorridors()).length
       );
+
+      // optional: give new WFS routes TDAS once
+      await updateTrafficData();
     } catch (wfsErr) {
       console.error('⚠ WFS enrichment skipped due to error:', wfsErr);
-      // continue with local-only corridors
     }
 
-    // 3) Traffic + filtered corridors
-    await updateTrafficData();
-
+    // 4) Build filtered corridors (project ∪ TDAS)
     const tdasRouteIds = new Set<number>();
     for (const routeIdStr of Object.keys(corridors)) {
       tdasRouteIds.add(Number(routeIdStr));
@@ -103,16 +101,14 @@ function findRoute(routeId: number): any {
       Object.keys(getFilteredCorridors()).length
     );
 
-    // 4) Start timers
+    // 5) Start timers
     setInterval(updateTrafficData, 60000);
     setInterval(() => tickSimulation(1), 1000);
     console.log('✓ Truck simulation started (with current corridors)');
   } catch (err) {
     console.error('Failed to initialize app:', err);
-    // Do NOT call process.exit(1) on Vercel
   }
 })();
-
 
 // ===== PAGE ROUTES =====
 
@@ -385,44 +381,38 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
   }
 });
 
+// in updateTrafficData()
+import { getAllCorridors } from './services/corridorService';
+
 async function updateTrafficData() {
   try {
     const speedMap = await fetchTrafficSpeedMap();
     console.log('TDAS speedMap size:', speedMap.size);
 
-    const allCorridors = getFilteredCorridors();
+    const allCorridors = getAllCorridors();   // <-- changed
     console.log(
       'Corridors available when updating traffic:',
       Object.keys(allCorridors).length
     );
-    console.log(
-      'Sample TDAS ids:',
-      Array.from(speedMap.keys()).slice(0, 10)
-    );
-    console.log(
-      'Sample corridor ids:',
-      Object.keys(allCorridors).slice(0, 10)
-    );
-
 
     let updateCount = 0;
-
     for (const [segmentId, data] of speedMap.entries()) {
       const routeId = Number(segmentId);
       const state = speedToState(data.speed);
 
-      if (allCorridors[routeId]) { // only route IDs that exist
+      if (allCorridors[routeId]) {
         updateCorridorState(routeId, state, data.speed);
         updateCount++;
       }
     }
 
     lastTrafficUpdateTime = new Date();
-    console.log(`✓ Updated traffic state for ${updateCount} routes`);
+    console.log('✓ Updated traffic state for', updateCount, 'routes');
   } catch (err) {
     console.error('Error updating traffic:', err);
   }
 }
+
 
 
 // Start server only in local/dev (not on Vercel)
