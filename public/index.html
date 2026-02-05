@@ -17,14 +17,6 @@
         <header class="header">
             <h1>🚚 HK Logistics - Overview</h1>
             <div class="nav">
-                <button class="btn btn-mode active" id="projectBtn" onclick="setMode('focused')">
-                    📍 Project Routes
-                </button>
-                <button class="btn btn-mode" id="allBtn" onclick="setMode('overview')">
-                    🗺️ All Routes
-                </button>
-                <button class="btn btn-primary" onclick="refreshData()">Refresh</button>
-                <a href="/tracking" class="btn btn-secondary">🚛 Tracking</a>
             </div>
         </header>
         
@@ -34,12 +26,19 @@
                     <div style="font-size: 48px; margin-bottom: 10px;">🗺️</div>
                     <div>Initializing map and routes...</div>
                 </div>
+
+                <div class="map-controls">
+                  <button class="btn btn-mode active" id="projectBtn">Project Routes</button>
+                  <button class="btn btn-mode" id="allBtn">Traffic Status</button>
+                  <button class="btn btn-primary" id="refreshBtn">Refresh</button>
+                  <button class="btn btn-secondary" id="trackingBtn">Tracking</button>
+                </div>
             </div>
             
             <div class="stats-panel">
               <!-- Overview mode panel -->
               <div id="overviewPanel">
-                <h2>📊 Traffic Status</h2>
+                <h2>📊Project Route Status</h2>
 
                 <div class="stats-grid">
                   <div class="stat-item">
@@ -118,6 +117,23 @@
         loadAndDisplayRoutes();
 
         setInterval(loadTrafficData, 60000);
+
+        document.getElementById('projectBtn').onclick = () => {
+          zoomToProjectRoutes();
+        };
+
+        document.getElementById('refreshBtn').onclick = () => {
+          refreshData();
+        };
+
+        document.getElementById('allBtn').onclick = () => {
+          showStatusPanel(); // show traffic status for project routes
+        };
+
+        document.getElementById('trackingBtn').onclick = () => {
+          showProjectPanel(); // show the ETA/estimation panel
+        };
+
       });
 
       function initMap() {
@@ -136,29 +152,20 @@
         }
       }
 
-      function setMode(mode) {
-        currentMode = mode;
-        console.log('🔄 Switching to mode:', mode);
+      let currentPanel = 'project'; // 'project' or 'status'
 
-        document.getElementById('projectBtn').classList.toggle('active', mode === 'focused');
-        document.getElementById('allBtn').classList.toggle('active', mode === 'overview');
-
-        const title = mode === 'overview' ? '🗺️ All HK Routes' : '📍 Project Routes';
-        document.getElementById('routeTitle').textContent = title;
-
-        const overviewPanel = document.getElementById('overviewPanel');
-        const projectPanel = document.getElementById('projectPanel');
-
-        if (mode === 'overview') {
-          overviewPanel.style.display = 'block';
-          projectPanel.style.display = 'none';
-        } else {
-          overviewPanel.style.display = 'none';
-          projectPanel.style.display = 'block';
-        }
-
-        loadAndDisplayRoutes();
+      function showProjectPanel() {
+        currentPanel = 'project';
+        document.getElementById('projectPanel').style.display = 'block';
+        document.getElementById('overviewPanel').style.display = 'none';
       }
+
+      function showStatusPanel() {
+        currentPanel = 'status';
+        document.getElementById('projectPanel').style.display = 'none';
+        document.getElementById('overviewPanel').style.display = 'block';
+      }
+
 
 
       async function loadTrafficData() {
@@ -176,14 +183,24 @@
           trafficDataMap = {};
           let green = 0, yellow = 0, red = 0;
 
-          if (data.stateMap) {
+          if (data.stateMap && allRoutes) {
+            const projectIds = new Set(
+              allRoutes
+                .filter(f => f.properties?.ISPROJECT)
+                .map(f => String(f.properties.ROUTEID))
+            );
+
+            green = yellow = red = 0;
             for (const [routeId, state] of Object.entries(data.stateMap)) {
+              if (!projectIds.has(String(routeId))) continue;
+
               trafficDataMap[routeId] = state;
               if (state.state === 'GREEN') green++;
               else if (state.state === 'YELLOW') yellow++;
               else if (state.state === 'RED') red++;
             }
           }
+
 
           document.getElementById('greenCount').textContent = green;
           document.getElementById('yellowCount').textContent = yellow;
@@ -360,6 +377,36 @@
       function goToTracking(routeId) {
         window.location.href = `/tracking?route=${routeId}`;
       }
+
+      function zoomToProjectRoutes() {
+        if (!map || !allRoutes) return;
+
+        const projectFeatures = allRoutes.filter(
+          f => f.properties?.ISPROJECT
+        );
+        if (!projectFeatures.length) return;
+
+        const bounds = L.latLngBounds([]);
+
+        projectFeatures.forEach(f => {
+          let allCoords = [];
+          if (f.geometry.type === 'LineString') {
+            allCoords = [f.geometry.coordinates];
+          } else if (f.geometry.type === 'MultiLineString') {
+            allCoords = f.geometry.coordinates;
+          }
+          allCoords.forEach(coords => {
+            coords.forEach(coord => {
+              bounds.extend([coord[1], coord[0]]);
+            });
+          });
+        });
+
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [40, 40] });
+        }
+      }
+
     </script>
 
 </body>

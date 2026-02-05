@@ -118,3 +118,16 @@ main {
   color: var(--secondary);
   margin-top: 8px;
 }
+
+#map {
+  position: relative;
+}
+
+.map-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+}
