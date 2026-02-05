@@ -15,8 +15,8 @@ const COMMON_QUERY =
   '&outputFormat=geojson&srsName=EPSG:4326' +
   '&filter=' + encodeURIComponent(FILTER_XML);
 
-const PAGE_SIZE = 5000;   // safer than 10000 on Vercel
-const MAX_PAGES = 2;      // keep for now; adjust later if stable
+const PAGE_SIZE = 5000;
+const MAX_PAGES = 2;
 
 export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
   let startIndex = 0;
@@ -34,7 +34,7 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
       `${BASE_WFS_URL}?${COMMON_QUERY}` +
       `&maxFeatures=${PAGE_SIZE}&startIndex=${startIndex}`;
 
-    console.log(`Fetching WFS page: startIndex=${startIndex} ...`);
+    console.log(`Fetching WFS page: startIndex=${startIndex} ...`);  // <-- add
 
     let res: Response;
     try {
@@ -68,10 +68,7 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
 
       batch[routeId] = {
         type: feature.type,
-        properties: {
-          ...props,
-          IS_FROM_WFS: true,
-        },
+        properties: { ...props, IS_FROM_WFS: true },
         geometry: feature.geometry,
       };
       pageAdded++;
@@ -80,12 +77,13 @@ export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
     addCorridors(batch);
     totalAdded += pageAdded;
 
-    console.log(
-      `✓ Page startIndex=${startIndex}: added ${pageAdded} routes (total so far: ${totalAdded})`
+    console.log(                                         // <-- add
+      `✓ Page startIndex=${startIndex}: added ${pageAdded} routes ` +
+      `(total so far: ${totalAdded})`
     );
 
     startIndex += PAGE_SIZE;
   }
 
-  console.log(`✓ Finished WFS fetch, total added routes: ${totalAdded}`);
+  console.log(`✓ Finished WFS fetch, total added routes: ${totalAdded}`); // <-- add
 }
