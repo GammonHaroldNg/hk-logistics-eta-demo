@@ -15,8 +15,8 @@ const COMMON_QUERY =
   '&outputFormat=geojson&srsName=EPSG:4326' +
   '&filter=' + encodeURIComponent(FILTER_XML);
 
-const PAGE_SIZE = 5000;
-const MAX_PAGES = 2;
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 5;
 
 export async function fetchAdditionalCorridorsFromWFS(): Promise<void> {
   let startIndex = 0;
