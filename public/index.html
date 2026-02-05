@@ -107,6 +107,7 @@
       let allRoutes = [];
       let currentMode = 'focused';
       let trafficDataMap = {};  // { [routeId]: { state, speed } }
+      let projectMarkers = null;
 
       window.addEventListener('DOMContentLoaded', () => {
         console.log('✓ Page loaded');
@@ -386,8 +387,20 @@
         );
         if (!projectFeatures.length) return;
 
+        // Clear existing markers
+        if (projectMarkers) {
+          projectMarkers.clearLayers();
+        } else {
+          projectMarkers = L.featureGroup().addTo(map);
+        }
+
+        // Your specific start and end coordinates
+        const startPoint = [22.41475986, 113.99064608];  // [lat, lng]
+        const endPoint = [22.51755036, 114.0741744];     // [lat, lng]
+
         const bounds = L.latLngBounds([]);
 
+        // Collect bounds from project routes
         projectFeatures.forEach(f => {
           let allCoords = [];
           if (f.geometry.type === 'LineString') {
@@ -402,10 +415,40 @@
           });
         });
 
+        // Add start and end points to bounds
+        bounds.extend(startPoint);
+        bounds.extend(endPoint);
+
+        // Add start marker (green with "S")
+        const startIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">S</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+        
+        L.marker(startPoint, { icon: startIcon })
+          .bindPopup('<b>🏭 Start Point</b><br>Concrete Plant<br>Coordinates: 22.41476, 113.99065')
+          .addTo(projectMarkers);
+
+        // Add end marker (red with "E")
+        const endIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">E</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+        
+        L.marker(endPoint, { icon: endIcon })
+          .bindPopup('<b>🏗️ End Point</b><br>Construction Site<br>Coordinates: 22.51755, 114.07417')
+          .addTo(projectMarkers);
+
+        // Zoom to show all project routes and markers
         if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [40, 40] });
+          map.fitBounds(bounds, { padding: [60, 60] });
         }
       }
+
 
     </script>
 
