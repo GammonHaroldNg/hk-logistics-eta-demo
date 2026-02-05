@@ -64,49 +64,60 @@ function findRoute(routeId: number): any {
 }
 
 // Load corridors on startup
-// 1) Always load local project GeoJSON
-await loadCorridorsFromGeoJSON();
-console.log('✓ Project corridors loaded:', Object.keys(getAllCorridors()).length);
+(async () => {
+  try {
+    // 1) Always load local project GeoJSON
+    await loadCorridorsFromGeoJSON();
+    console.log(
+      '✓ Project corridors loaded:',
+      Object.keys(getAllCorridors()).length
+    );
 
-// 2) First TDAS update – guarantees project routes get TDAS
-await updateTrafficData();
-
-// 3) Kick off WFS enrichment in the background (do NOT await)
-fetchAdditionalCorridorsFromWFS()
-  .then(async () => {
-    console.log('✓ WFS enrichment finished in background');
-
-    // After WFS enriches allCorridors, run TDAS once more for new routes
+    // 2) First TDAS update – guarantees project routes get TDAS
     await updateTrafficData();
 
+    // 3) Kick off WFS enrichment in the background (do NOT await)
+    fetchAdditionalCorridorsFromWFS()
+      .then(async () => {
+        console.log('✓ WFS enrichment finished in background');
+
+        // After WFS enriches allCorridors, run TDAS once more for new routes
+        await updateTrafficData();
+
+        const tdasRouteIds = new Set<number>();
+        for (const routeIdStr of Object.keys(corridors)) {
+          tdasRouteIds.add(Number(routeIdStr));
+        }
+        buildFilteredCorridors(tdasRouteIds);
+        console.log(
+          '✓ Filtered corridors rebuilt after WFS, count:',
+          Object.keys(getFilteredCorridors()).length
+        );
+      })
+      .catch(err => {
+        console.error('⚠ WFS enrichment failed in background:', err);
+      });
+
+    // 4) Initial filtered corridors using current TDAS + project only
     const tdasRouteIds = new Set<number>();
     for (const routeIdStr of Object.keys(corridors)) {
       tdasRouteIds.add(Number(routeIdStr));
     }
     buildFilteredCorridors(tdasRouteIds);
     console.log(
-      '✓ Filtered corridors rebuilt after WFS, count:',
+      '✓ Filtered corridors ready (project-only / initial TDAS), count:',
       Object.keys(getFilteredCorridors()).length
     );
-  })
-  .catch(err => {
-    console.error('⚠ WFS enrichment failed in background:', err);
-  });
 
-// 4) Initial filtered corridors using current TDAS + project only
-const tdasRouteIds = new Set<number>();
-for (const routeIdStr of Object.keys(corridors)) {
-  tdasRouteIds.add(Number(routeIdStr));
-}
-buildFilteredCorridors(tdasRouteIds);
-console.log(
-  '✓ Filtered corridors ready (project-only / initial TDAS), count:',
-  Object.keys(getFilteredCorridors()).length
-);
+    // 5) Start timers
+    setInterval(updateTrafficData, 60000);
+    setInterval(() => tickSimulation(1), 1000);
+    console.log('✓ Truck simulation started (with current corridors)');
+  } catch (err) {
+    console.error('Failed to initialize app:', err);
+  }
+})();
 
-// 5) Start timers
-setInterval(updateTrafficData, 60000);
-setInterval(() => tickSimulation(1), 1000);
 
 
 // ===== PAGE ROUTES =====
