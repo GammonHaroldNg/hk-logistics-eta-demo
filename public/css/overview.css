@@ -199,3 +199,28 @@ main {
   color: #6b7280;
   z-index: 10;
 }
+
+#overviewPanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.route-list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 10px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.route-list {
+  padding: 8px;
+}
+
+.last-update {
+  flex-shrink: 0;
+  margin-top: auto;
+}

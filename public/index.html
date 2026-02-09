@@ -53,22 +53,30 @@
                     <span class="stat-label">Red</span>
                     <span class="stat-value" id="redCount">-</span>
                   </div>
-                </div>
-
-                <div style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
-                  <h3 id="routeTitle">📍 Project Routes</h3>
-                  <div class="route-list" id="routeList">
-                    <div class="loading">
-                      Click a route on the map to see details.
-                    </div>
+                    <div class="stat-item">
+                    <span class="stat-label">No Data</span>
+                    <span class="stat-value" id="blueCount">-</span>
                   </div>
                 </div>
 
-                <div class="last-update">
-                  <strong>Last Update:</strong><br>
-                  <span id="lastUpdate">-</span>
+                <h3 id="routeTitle">📍 Project Routes</h3>
+
+
+                  <!-- Scrollable route list container -->
+                  <div class="route-list-container">
+                    <div class="route-list" id="routeList">
+                      <div class="loading">
+                        Loading routes...
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="last-update">
+                    <strong>Last Update:</strong><br>
+                    <span id="lastUpdate">-</span>
+                  </div>
                 </div>
-              </div>
+
 
               <!-- Project simulation panel -->
               <div id="projectPanel" style="display:none;">
@@ -182,7 +190,7 @@
 
           // Build traffic map and counters only from routes with TDAS
           trafficDataMap = {};
-          let green = 0, yellow = 0, red = 0;
+          let green = 0, yellow = 0, red = 0, blue = 0;
 
           if (data.stateMap && allRoutes) {
             const projectIds = new Set(
@@ -191,7 +199,9 @@
                 .map(f => String(f.properties.ROUTEID))
             );
 
-            green = yellow = red = 0;
+            green = yellow = red = blue = 0;
+            
+            // Count routes with TDAS data
             for (const [routeId, state] of Object.entries(data.stateMap)) {
               if (!projectIds.has(String(routeId))) continue;
 
@@ -200,12 +210,21 @@
               else if (state.state === 'YELLOW') yellow++;
               else if (state.state === 'RED') red++;
             }
-          }
 
+            // Count routes WITHOUT TDAS data (blue/no data)
+            for (const feature of allRoutes) {
+              if (!feature.properties?.ISPROJECT) continue;
+              const routeId = String(feature.properties.ROUTEID);
+              if (!trafficDataMap[routeId]) {
+                blue++;
+              }
+            }
+          }
 
           document.getElementById('greenCount').textContent = green;
           document.getElementById('yellowCount').textContent = yellow;
           document.getElementById('redCount').textContent = red;
+          document.getElementById('blueCount').textContent = blue;
 
           if (data.lastUpdate) {
             const time = new Date(data.lastUpdate).toLocaleTimeString('en-HK');
@@ -216,6 +235,7 @@
           document.getElementById('lastUpdate').textContent = 'Error';
         }
       }
+
 
       async function loadAndDisplayRoutes() {
         try {
@@ -234,8 +254,52 @@
 
           if (!geoData.features || geoData.features.length === 0) {
             const routeList = document.getElementById('routeList');
-            routeList.innerHTML = '<div class="loading">No routes</div>';
-            return;
+            let displayRoutes = [];
+
+            if (currentMode === 'focused') {
+              displayRoutes = projectRoutes; // Show ALL project routes, not just 15
+            } else {
+              displayRoutes = geoData.features
+                .filter(f => true)
+                .slice(0, 15);
+            }
+
+            if (displayRoutes.length === 0) {
+              routeList.innerHTML = '<div class="loading">No routes with traffic data</div>';
+              return;
+            }
+
+            routeList.innerHTML = displayRoutes
+              .map(route => {
+                const routeId = route.properties.ROUTEID;
+                const routeName = route.properties.NAME || `Route ${routeId}`; // Use NAME field
+                const traffic = trafficDataMap[routeId];
+                const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
+                const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
+                                      : 'NO DATA';
+                const speed = hasTdas && typeof (traffic?.speed ?? route.properties.TRAFFICSPEED) === 'number'
+                  ? (traffic?.speed ?? route.properties.TRAFFICSPEED)
+                  : null;
+
+                const statusClass = hasTdas
+                  ? `status-${state.toLowerCase()}`
+                  : 'status-gray';
+
+                const speedText = hasTdas && speed !== null
+                  ? `${speed.toFixed(1)} km/h`
+                  : '-';
+
+                return `
+                  <div class="route-item" onclick="onRouteClick(${routeId})">
+                    <div class="route-id">${routeName}</div>
+                    <div class="route-status">
+                      <span class="status-badge ${statusClass}">${state}</span>
+                      <span style="margin-left: 8px;">${speedText}</span>
+                    </div>
+                  </div>
+                `;
+              })
+              .join('');
           }
 
           allRoutes = geoData.features;
