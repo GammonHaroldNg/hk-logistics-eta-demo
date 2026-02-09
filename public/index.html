@@ -41,23 +41,27 @@
                 <h2>📊Project Route Status</h2>
 
                 <div class="stats-grid">
-                  <div class="stat-item">
+                  <div class="stat-item filter-stat active" data-filter="GREEN" id="statGreen" onclick="toggleFilter('GREEN')">
                     <span class="stat-label">Green</span>
                     <span class="stat-value" id="greenCount">-</span>
                   </div>
-                  <div class="stat-item">
+                  <div class="stat-item filter-stat active" data-filter="YELLOW" id="statYellow" onclick="toggleFilter('YELLOW')">
                     <span class="stat-label">Yellow</span>
                     <span class="stat-value" id="yellowCount">-</span>
                   </div>
-                  <div class="stat-item">
+                  <div class="stat-item filter-stat active" data-filter="RED" id="statRed" onclick="toggleFilter('RED')">
                     <span class="stat-label">Red</span>
                     <span class="stat-value" id="redCount">-</span>
                   </div>
-                    <div class="stat-item">
+                  <div class="stat-item filter-stat" data-filter="NO DATA" id="statNoData" onclick="toggleFilter('NO DATA')">
                     <span class="stat-label">No Data</span>
                     <span class="stat-value" id="blueCount">-</span>
                   </div>
                 </div>
+
+
+<!-- REMOVE the separate filter-buttons div entirely -->
+
 
                 <h3 id="routeTitle">📍 Project Routes</h3>
 
@@ -116,6 +120,119 @@
       let currentMode = 'focused';
       let trafficDataMap = {};  // { [routeId]: { state, speed } }
       let projectMarkers = null;
+      let activeFilters = new Set(['GREEN', 'YELLOW', 'RED']);
+      let allProjectRoutes = [];
+
+      function toggleFilter(filterType) {
+        if (activeFilters.has(filterType)) {
+          activeFilters.delete(filterType);
+        } else {
+          activeFilters.add(filterType);
+        }
+        
+        // Update stat item appearance
+        const btnMap = {
+          'GREEN': 'statGreen',
+          'YELLOW': 'statYellow',
+          'RED': 'statRed',
+          'NO DATA': 'statNoData'
+        };
+        
+        const btn = document.getElementById(btnMap[filterType]);
+        if (btn) {
+          btn.classList.toggle('active');
+        }
+        
+        // Re-render the route list with current filters
+        renderRouteList();
+      }
+
+      function renderRouteList() {
+        const routeList = document.getElementById('routeList');
+        
+        if (!allProjectRoutes || allProjectRoutes.length === 0) {
+          routeList.innerHTML = '<div class="loading">No routes available</div>';
+          return;
+        }
+        
+        // Filter routes based on active filters
+        const filteredRoutes = allProjectRoutes.filter(route => {
+          const routeId = route.properties.ROUTEID;
+          const traffic = trafficDataMap[routeId];
+          const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
+          const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
+                                : 'NO DATA';
+          
+          return activeFilters.has(state);
+        });
+        
+        if (filteredRoutes.length === 0) {
+          routeList.innerHTML = '<div class="loading">No routes match the selected filters</div>';
+          return;
+        }
+        
+        routeList.innerHTML = filteredRoutes
+          .map(route => {
+            const routeId = route.properties.ROUTEID;
+            const routeName = route.properties.Name || `Route ${routeId}`;
+            const traffic = trafficDataMap[routeId];
+            const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
+            const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
+                                  : 'NO DATA';
+            const speed = hasTdas && typeof (traffic?.speed ?? route.properties.TRAFFICSPEED) === 'number'
+              ? (traffic?.speed ?? route.properties.TRAFFICSPEED)
+              : null;
+
+            const statusClass = hasTdas
+              ? `status-${state.toLowerCase()}`
+              : 'status-gray';
+
+            const speedText = hasTdas && speed !== null
+              ? `${speed.toFixed(1)} km/h`
+              : '-';
+
+            return `
+              <div class="route-item" onclick="zoomToRoute(${routeId})">
+                <div class="route-id">${routeName}</div>
+                <div class="route-status">
+                  <span class="status-badge ${statusClass}">${state}</span>
+                  <span style="margin-left: 8px;">${speedText}</span>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+      }
+
+      function zoomToRoute(routeId) {
+        if (!map || !allRoutes) return;
+        
+        const route = allRoutes.find(f => f.properties?.ROUTEID === routeId);
+        if (!route || !route.geometry) return;
+        
+        const bounds = L.latLngBounds([]);
+        
+        let allCoords = [];
+        if (route.geometry.type === 'LineString') {
+          allCoords = [route.geometry.coordinates];
+        } else if (route.geometry.type === 'MultiLineString') {
+          allCoords = route.geometry.coordinates;
+        }
+        
+        allCoords.forEach(coords => {
+          coords.forEach(coord => {
+            bounds.extend([coord[1], coord[0]]);
+          });
+        });
+        
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { 
+            padding: [80, 80],
+            maxZoom: 15 
+          });
+        }
+      }
+
 
       window.addEventListener('DOMContentLoaded', () => {
         console.log('✓ Page loaded');
@@ -230,11 +347,73 @@
             const time = new Date(data.lastUpdate).toLocaleTimeString('en-HK');
             document.getElementById('lastUpdate').textContent = time;
           }
+
+          if (allProjectRoutes && allProjectRoutes.length > 0) {
+            renderRouteList();
+          }
+
+          if (allRoutes && allRoutes.length > 0) {
+            redrawRoutesOnMap();
+          }
         } catch (error) {
           console.error('✗ Traffic error:', error);
           document.getElementById('lastUpdate').textContent = 'Error';
         }
       }
+
+      function redrawRoutesOnMap() {
+        if (!routeLayer || !allRoutes) return;
+
+        // Clear existing routes
+        routeLayer.clearLayers();
+
+        let routesAdded = 0;
+
+        for (const feature of allRoutes) {
+          try {
+            if (!feature.geometry) continue;
+            if (feature.geometry.type !== 'LineString' &&
+                feature.geometry.type !== 'MultiLineString') continue;
+
+            const routeId = feature.properties?.ROUTEID;
+            const isProject = feature.properties?.ISPROJECT;
+
+            // Get TDAS from trafficDataMap (updated data)
+            const trafficState = trafficDataMap[routeId];
+            const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
+            const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
+
+            const color = getColorForState(state, isProject, hasTdas);
+            const weight = isProject ? 5 : 2;
+            const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
+
+            let allCoords = [];
+            if (feature.geometry.type === 'LineString') {
+              allCoords = [feature.geometry.coordinates];
+            } else if (feature.geometry.type === 'MultiLineString') {
+              allCoords = feature.geometry.coordinates;
+            }
+
+            for (const coords of allCoords) {
+              if (!coords || coords.length === 0) continue;
+              const latLngs = coords.map(coord => [coord[1], coord[0]]);
+
+              L.polyline(latLngs, {
+                color,
+                weight,
+                opacity
+              }).addTo(routeLayer);
+
+              routesAdded++;
+            }
+          } catch (e) {
+            console.warn('Error redrawing route:', e);
+          }
+        }
+
+        console.log('✓ Routes redrawn on map:', routesAdded, 'segments');
+      }
+
 
 
       async function loadAndDisplayRoutes() {
@@ -331,51 +510,12 @@
 
           console.log('✓ Routes drawn on map:', routesAdded, 'segments');
 
-          const routeList = document.getElementById('routeList');
-          let displayRoutes = [];
+          // Store all project routes globally for filtering
+          allProjectRoutes = projectRoutes;
 
-          if (currentMode === 'focused') {
-            displayRoutes = projectRoutes; // Show ALL project routes - NO slice!
-          } else {
-            displayRoutes = geoData.features.filter(f => true);
-          }
+          // Render the route list with current filters
+          renderRouteList();
 
-          if (displayRoutes.length === 0) {
-            routeList.innerHTML = '<div class="loading">No routes with traffic data</div>';
-            return;
-          }
-
-          routeList.innerHTML = displayRoutes
-            .map(route => {
-              const routeId = route.properties.ROUTEID;
-              const routeName = route.properties.Name || `Route ${routeId}`;
-              const traffic = trafficDataMap[routeId];
-              const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
-              const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
-                                    : 'NO DATA';
-              const speed = hasTdas && typeof (traffic?.speed ?? route.properties.TRAFFICSPEED) === 'number'
-                ? (traffic?.speed ?? route.properties.TRAFFICSPEED)
-                : null;
-
-              const statusClass = hasTdas
-                ? `status-${state.toLowerCase()}`
-                : 'status-gray';
-
-              const speedText = hasTdas && speed !== null
-                ? `${speed.toFixed(1)} km/h`
-                : '-';
-
-              return `
-                <div class="route-item" onclick="onRouteClick(${routeId})">
-                  <div class="route-id">${routeName}</div>
-                  <div class="route-status">
-                    <span class="status-badge ${statusClass}">${state}</span>
-                    <span style="margin-left: 8px;">${speedText}</span>
-                  </div>
-                </div>
-              `;
-            })
-            .join('');
         } catch (error) {
           console.error('✗ Routes error:', error);
           const routeList = document.getElementById('routeList');

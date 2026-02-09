@@ -16,7 +16,7 @@ main {
   background: white;
   border-left: 1px solid #e5e7eb;
   padding: 20px;
-  overflow-y: auto;
+  overflow: hidden; /* Keep this */
   display: flex;
   flex-direction: column;
 }
@@ -25,15 +25,16 @@ main {
   font-size: 18px;
   margin-bottom: 16px;
   color: #1f2937;
+  flex-shrink: 0;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr); /* Change from 3 to 4 columns */
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin: 15px 0;
+  flex-shrink: 0;
 }
-
 
 .stat-item {
   text-align: center;
@@ -66,99 +67,98 @@ main {
 }
 
 .route-list {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+  padding: 8px;
 }
 
 .route-list h3 {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 12px;
-    color: #1f2937;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1f2937;
 }
 
 .route-item {
-    padding: 10px;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all 0.2s;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .route-item:hover {
-    background: #f9fafb;
-    border-color: #3b82f6;
+  background: #f9fafb;
+  border-color: #3b82f6;
 }
 
 .route-id {
-    font-weight: 600;
-    color: #1f2937;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .route-status {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
 }
 
 .status-badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 3px;
-    font-size: 11px;
-    font-weight: 500;
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .status-green {
-    background: #d1fae5;
-    color: #065f46;
+  background: #d1fae5;
+  color: #065f46;
 }
 
 .status-yellow {
-    background: #fef3c7;
-    color: #92400e;
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .status-red {
-    background: #fee2e2;
-    color: #991b1b;
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .status-gray {
-    background: #f3f4f6;
-    color: #6b7280;
+  background: #f3f4f6;
+  color: #6b7280;
 }
 
 .last-update {
-    font-size: 12px;
-    color: #6b7280;
-    margin-top: 16px;
-    padding-top: 16px;
-    border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
 }
 
 .loading {
-    text-align: center;
-    padding: 20px;
-    color: #6b7280;
+  text-align: center;
+  padding: 20px;
+  color: #6b7280;
 }
 
 .loading-spinner {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid #e5e7eb;
-    border-top-color: #3b82f6;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-right: 10px;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
 }
 
 @keyframes spin {
-    to { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
 @media (max-width: 768px) {
@@ -190,6 +190,7 @@ main {
     width: 100%;
   }
 }
+
 /* Map loading overlay */
 .map-loading {
   position: absolute;
@@ -204,7 +205,13 @@ main {
 #overviewPanel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1; /* ADD THIS - take all available space from parent */
+  min-height: 0; /* ADD THIS - critical for nested flexbox */
+}
+
+#overviewPanel h3 {
+  flex-shrink: 0;
+  margin-bottom: 10px;
 }
 
 .route-list-container {
@@ -221,7 +228,28 @@ main {
   padding: 8px;
 }
 
-.last-update {
-  flex-shrink: 0;
-  margin-top: auto;
+.filter-stat {
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+  user-select: none;
+}
+
+.filter-stat:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.filter-stat.active {
+  border-color: #3b82f6;
+  background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
+}
+
+.filter-stat:not(.active) {
+  opacity: 0.4;
+  background: #f3f4f6;
+}
+
+.filter-stat:not(.active):hover {
+  opacity: 0.6;
 }
