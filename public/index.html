@@ -254,52 +254,8 @@
 
           if (!geoData.features || geoData.features.length === 0) {
             const routeList = document.getElementById('routeList');
-            let displayRoutes = [];
-
-            if (currentMode === 'focused') {
-              displayRoutes = projectRoutes; // Show ALL project routes, not just 15
-            } else {
-              displayRoutes = geoData.features
-                .filter(f => true)
-                .slice(0, 15);
-            }
-
-            if (displayRoutes.length === 0) {
-              routeList.innerHTML = '<div class="loading">No routes with traffic data</div>';
-              return;
-            }
-
-            routeList.innerHTML = displayRoutes
-              .map(route => {
-                const routeId = route.properties.ROUTEID;
-                const routeName = route.properties.NAME || `Route ${routeId}`; // Use NAME field
-                const traffic = trafficDataMap[routeId];
-                const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
-                const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
-                                      : 'NO DATA';
-                const speed = hasTdas && typeof (traffic?.speed ?? route.properties.TRAFFICSPEED) === 'number'
-                  ? (traffic?.speed ?? route.properties.TRAFFICSPEED)
-                  : null;
-
-                const statusClass = hasTdas
-                  ? `status-${state.toLowerCase()}`
-                  : 'status-gray';
-
-                const speedText = hasTdas && speed !== null
-                  ? `${speed.toFixed(1)} km/h`
-                  : '-';
-
-                return `
-                  <div class="route-item" onclick="onRouteClick(${routeId})">
-                    <div class="route-id">${routeName}</div>
-                    <div class="route-status">
-                      <span class="status-badge ${statusClass}">${state}</span>
-                      <span style="margin-left: 8px;">${speedText}</span>
-                    </div>
-                  </div>
-                `;
-              })
-              .join('');
+            routeList.innerHTML = '<div class="loading">No routes</div>';
+            return;
           }
 
           allRoutes = geoData.features;
@@ -373,11 +329,9 @@
           let displayRoutes = [];
 
           if (currentMode === 'focused') {
-            displayRoutes = projectRoutes.slice(0, 15);
+            displayRoutes = projectRoutes; // Show ALL project routes - NO slice!
           } else {
-            displayRoutes = geoData.features
-              .filter(f => true) // all routes, we will handle NO DATA in UI
-              .slice(0, 15);
+            displayRoutes = geoData.features.filter(f => true);
           }
 
           if (displayRoutes.length === 0) {
@@ -407,7 +361,7 @@
 
               return `
                 <div class="route-item" onclick="onRouteClick(${routeId})">
-                  <div class="route-id">${routeName} (ID: ${routeId})</div>
+                  <div class="route-id">${routeName}</div>
                   <div class="route-status">
                     <span class="status-badge ${statusClass}">${state}</span>
                     <span style="margin-left: 8px;">${speedText}</span>
@@ -422,6 +376,7 @@
           routeList.innerHTML = '<div class="loading">Error: ' + error.message + '</div>';
         }
       }
+
 
       function getColorForState(state, isProject, hasTdas) {
         // No TDAS: neutral grey
