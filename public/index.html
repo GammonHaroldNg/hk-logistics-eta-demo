@@ -348,7 +348,7 @@
           routeList.innerHTML = displayRoutes
             .map(route => {
               const routeId = route.properties.ROUTEID;
-              const routeName = route.properties.NAME || `Route ${routeId}`;
+              const routeName = route.properties.Name || `Route ${routeId}`;
               const traffic = trafficDataMap[routeId];
               const hasTdas = !!traffic || !!route.properties.HASTDASDATA;
               const state = hasTdas ? (traffic?.state || route.properties.TDASSTATE || 'UNKNOWN')
