@@ -252,6 +252,12 @@
           const geoData = await response.json();
           console.log('✓ Routes data:', geoData.features?.length, 'routes');
 
+          // ADD THIS DEBUG CODE:
+          if (geoData.features && geoData.features.length > 0) {
+            console.log('First route properties:', geoData.features[0].properties);
+            console.log('Available property keys:', Object.keys(geoData.features[0].properties));
+          }
+
           if (!geoData.features || geoData.features.length === 0) {
             const routeList = document.getElementById('routeList');
             routeList.innerHTML = '<div class="loading">No routes</div>';
