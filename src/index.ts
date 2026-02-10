@@ -296,22 +296,31 @@ app.post('/api/delivery/start', (req: any, res: any) => {
     } = req.body;
 
     // Build combined corridor from ALL 92 project routes
+
     const allCorridors = getAllCorridors();
-    const allCoords: [number, number][] = [];
+    const allCoords: number[][] = [];
     let segmentCount = 0;
 
     for (const routeId of projectRouteIds) {
       const corridor = allCorridors[routeId];
       if (!corridor || !corridor.geometry) continue;
-      const geom = corridor.geometry;
-      const coords = geom.type === 'MultiLineString'
-        ? geom.coordinates.flat()
-        : geom.coordinates;
-      if (coords && coords.length > 0) {
-        allCoords.push(...coords);
-        segmentCount++;
+      const geom = corridor.geometry as unknown as { type: string; coordinates: any };
+
+      if (geom.type === 'MultiLineString') {
+        for (const line of geom.coordinates) {
+          for (const coord of line) {
+            allCoords.push(coord);
+          }
+        }
+      } else if (geom.type === 'LineString') {
+        for (const coord of geom.coordinates) {
+          allCoords.push(coord);
+        }
       }
+
+      segmentCount++;
     }
+
 
     if (allCoords.length === 0) {
       return res.status(400).json({ error: 'No project route geometry found' });
