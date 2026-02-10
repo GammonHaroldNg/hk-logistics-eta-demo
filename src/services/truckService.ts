@@ -1,22 +1,22 @@
-import { calculateRouteDistance, interpolatePosition, calculateETA } from './etaService';
+import { calculateRouteDistance, interpolatePosition } from './etaService';
 import { corridors } from './tdas';
 
 // ===== TYPES =====
 export interface ConcreteTruck {
   truckId: string;
-  truckNumber: number;         // 1-based display number
+  truckNumber: number;
   routeId: number;
   status: 'en-route' | 'arrived' | 'waiting';
-  currentPosition: [number, number];  // [lng, lat]
-  progressRatio: number;       // 0 → 1
-  departureTime: Date;         // when truck left the plant
-  arrivalTime: Date | null;    // actual arrival (null if still moving)
-  estimatedArrival: Date;      // predicted arrival based on current speed
+  currentPosition: [number, number];
+  progressRatio: number;
+  departureTime: Date;
+  arrivalTime: Date | null;
+  estimatedArrival: Date;
   elapsedSeconds: number;
-  totalDistance: number;        // km
-  currentSpeed: number;        // km/h (from TDAS or default)
-  concreteVolume: number;      // m³ per truck
-  isLate: boolean;             // arrived later than planned interval
+  totalDistance: number;
+  currentSpeed: number;
+  concreteVolume: number;
+  isLate: boolean;
 }
 
 export interface DeliveryRecord {
@@ -33,12 +33,12 @@ export interface DeliveryRecord {
 }
 
 export interface DeliveryConfig {
-  routeId: number;
-  targetVolume: number;        // m³ total target for the pour
-  volumePerTruck: number;      // m³ per truck (default 8)
-  trucksPerHour: number;       // dispatch frequency (default 12)
-  startTime: Date;             // when first truck departs
-  defaultSpeed: number;        // km/h fallback if no TDAS
+  routeId: number;           // 0 = all project routes combined
+  targetVolume: number;
+  volumePerTruck: number;
+  trucksPerHour: number;
+  startTime: Date;
+  defaultSpeed: number;
 }
 
 // ===== STATE =====
@@ -48,14 +48,29 @@ let deliveryLog: DeliveryRecord[] = [];
 let nextTruckNumber = 1;
 let nextDispatchTime: Date | null = null;
 let routeGeometry: any = null;
+let corridorSegmentCount = 0;
 let isRunning = false;
+
+// ===== AVERAGE SPEED ACROSS ALL PROJECT ROUTES =====
+function getAverageProjectSpeed(defaultSpeed: number): number {
+  let totalSpeed = 0;
+  let count = 0;
+  for (const routeIdStr of Object.keys(corridors)) {
+    const data = corridors[Number(routeIdStr)];
+    if (data && data.speed && data.speed > 0) {
+      totalSpeed += data.speed;
+      count++;
+    }
+  }
+  return count > 0 ? totalSpeed / count : defaultSpeed;
+}
 
 // ===== INIT =====
 export function startDeliverySession(
   sessionConfig: DeliveryConfig,
-  geometry: any
-): { message: string; totalTrucksNeeded: number; intervalMinutes: number } {
-  // Reset
+  geometry: any,
+  segmentCount: number = 1
+): { message: string; totalTrucksNeeded: number; intervalMinutes: number; totalDistance: string; segmentCount: number } {
   activeTrucks.clear();
   deliveryLog = [];
   nextTruckNumber = 1;
@@ -63,20 +78,21 @@ export function startDeliverySession(
 
   config = sessionConfig;
   routeGeometry = geometry;
+  corridorSegmentCount = segmentCount;
 
   const intervalMinutes = 60 / config.trucksPerHour;
   const totalTrucksNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
+  const totalDist = calculateRouteDistance(geometry);
 
-  // Schedule first dispatch immediately
   nextDispatchTime = new Date(config.startTime);
-
-  // Dispatch the first truck right away
   dispatchTruck();
 
   return {
-    message: `Delivery started: ${totalTrucksNeeded} trucks needed, 1 every ${intervalMinutes} min`,
+    message: `Delivery started: ${totalTrucksNeeded} trucks needed, 1 every ${intervalMinutes} min, ${totalDist.toFixed(1)} km corridor`,
     totalTrucksNeeded,
-    intervalMinutes
+    intervalMinutes,
+    totalDistance: totalDist.toFixed(1),
+    segmentCount
   };
 }
 
@@ -84,24 +100,16 @@ export function startDeliverySession(
 function dispatchTruck(): ConcreteTruck | null {
   if (!config || !routeGeometry || !isRunning) return null;
 
-  // Check if we've already dispatched enough trucks
   const totalNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
   const totalDispatched = nextTruckNumber - 1;
   if (totalDispatched >= totalNeeded) return null;
 
   const totalDist = calculateRouteDistance(routeGeometry);
   const now = new Date();
-
-  // Get current speed from TDAS for this route, fallback to config default
-  const tdasData = corridors[config.routeId];
-  const currentSpeed = (tdasData?.speed && tdasData.speed > 0)
-    ? tdasData.speed
-    : config.defaultSpeed;
-
+  const currentSpeed = getAverageProjectSpeed(config.defaultSpeed);
   const travelTimeSeconds = (totalDist / currentSpeed) * 3600;
   const estimatedArrival = new Date(now.getTime() + travelTimeSeconds * 1000);
 
-  // Starting position = first coordinate of the route
   const coords = routeGeometry.coordinates || [];
   const startPos: [number, number] = coords.length > 0
     ? [coords[0][0], coords[0][1]]
@@ -128,51 +136,39 @@ function dispatchTruck(): ConcreteTruck | null {
   activeTrucks.set(truckId, truck);
   nextTruckNumber++;
 
-  // Schedule next dispatch
   const intervalMs = (60 / config.trucksPerHour) * 60 * 1000;
   nextDispatchTime = new Date(now.getTime() + intervalMs);
 
-  console.log(`🚛 Dispatched ${truckId} | Speed: ${currentSpeed.toFixed(1)} km/h | ETA: ${travelTimeSeconds.toFixed(0)}s`);
+  console.log(`🚛 Dispatched ${truckId} | Speed: ${currentSpeed.toFixed(1)} km/h | ETA: ${travelTimeSeconds.toFixed(0)}s | Dist: ${totalDist.toFixed(1)}km`);
   return truck;
 }
 
-// ===== TICK (called every second) =====
+// ===== TICK =====
 export function tickDelivery(dtSeconds: number): void {
   if (!config || !routeGeometry || !isRunning) return;
 
   const now = new Date();
 
-  // Check if it's time to dispatch the next truck
   if (nextDispatchTime && now >= nextDispatchTime) {
     dispatchTruck();
   }
 
-  // Update all en-route trucks
   for (const [truckId, truck] of activeTrucks.entries()) {
     if (truck.status !== 'en-route') continue;
 
     truck.elapsedSeconds += dtSeconds;
 
-    // Get live TDAS speed (updates every 60s from backend)
-    const tdasData = corridors[config.routeId];
-    const liveSpeed = (tdasData?.speed && tdasData.speed > 0)
-      ? tdasData.speed
-      : config.defaultSpeed;
+    const liveSpeed = getAverageProjectSpeed(config.defaultSpeed);
     truck.currentSpeed = liveSpeed;
 
-    // Calculate progress based on distance covered
-    const distCovered = (liveSpeed * truck.elapsedSeconds) / 3600; // km
+    const distCovered = (liveSpeed * truck.elapsedSeconds) / 3600;
     truck.progressRatio = Math.min(distCovered / truck.totalDistance, 1);
-
-    // Interpolate position along route
     truck.currentPosition = interpolatePosition(routeGeometry, truck.progressRatio);
 
-    // Recalculate ETA
     const remainingDist = truck.totalDistance * (1 - truck.progressRatio);
     const remainingSeconds = (remainingDist / liveSpeed) * 3600;
     truck.estimatedArrival = new Date(now.getTime() + remainingSeconds * 1000);
 
-    // Check arrival
     if (truck.progressRatio >= 1) {
       completeTruck(truckId, now);
     }
@@ -187,7 +183,6 @@ function completeTruck(truckId: string, now: Date): void {
   truck.arrivalTime = now;
   truck.progressRatio = 1;
 
-  // Was this truck late? Compare to planned interval
   const plannedIntervalMs = (60 / config.trucksPerHour) * 60 * 1000;
   const plannedArrival = new Date(
     config.startTime.getTime() +
@@ -216,7 +211,7 @@ function completeTruck(truckId: string, now: Date): void {
 }
 
 function getBaselineTravelTime(): number {
-  if (!config || !routeGeometry) return 1800; // 30 min default
+  if (!config || !routeGeometry) return 1800;
   const dist = calculateRouteDistance(routeGeometry);
   return (dist / config.defaultSpeed) * 3600;
 }
@@ -230,10 +225,9 @@ export function getDeliveryStatus() {
   const remaining = Math.max(0, config.targetVolume - delivered);
   const trucksCompleted = deliveryLog.length;
   const trucksEnRoute = Array.from(activeTrucks.values()).filter(t => t.status === 'en-route').length;
-  const trucksWaiting = totalNeeded - (trucksCompleted + trucksEnRoute);
+  const trucksWaiting = Math.max(0, totalNeeded - (trucksCompleted + trucksEnRoute));
   const lateTrucks = deliveryLog.filter(r => r.wasLate).length;
 
-  // Delay estimate: if recent trucks are late, project when we'll finish
   let estimatedCompletionTime: Date | null = null;
   let delayMinutes = 0;
 
@@ -241,13 +235,11 @@ export function getDeliveryStatus() {
     const avgTravelTime = deliveryLog.reduce((s, r) => s + r.travelTimeSeconds, 0) / trucksCompleted;
     const intervalSeconds = (60 / config.trucksPerHour) * 60;
     const trucksRemaining = totalNeeded - trucksCompleted;
-    // Time until all remaining dispatched + travel
     const remainingDispatchTime = Math.max(0, (trucksRemaining - trucksEnRoute)) * intervalSeconds;
     const lastTruckTravelTime = avgTravelTime;
     const totalRemainingSeconds = remainingDispatchTime + lastTruckTravelTime;
     estimatedCompletionTime = new Date(Date.now() + totalRemainingSeconds * 1000);
 
-    // Planned completion
     const plannedTotalSeconds = (totalNeeded - 1) * intervalSeconds + getBaselineTravelTime();
     const plannedCompletion = new Date(config.startTime.getTime() + plannedTotalSeconds * 1000);
     delayMinutes = Math.max(0, Math.round((estimatedCompletionTime.getTime() - plannedCompletion.getTime()) / 60000));
@@ -259,7 +251,9 @@ export function getDeliveryStatus() {
       volumePerTruck: config.volumePerTruck,
       trucksPerHour: config.trucksPerHour,
       routeId: config.routeId,
-      startTime: config.startTime.toISOString()
+      startTime: config.startTime.toISOString(),
+      totalSegments: corridorSegmentCount,
+      totalDistance: routeGeometry ? calculateRouteDistance(routeGeometry).toFixed(1) : '0'
     },
     progress: {
       delivered,
@@ -268,7 +262,7 @@ export function getDeliveryStatus() {
       totalTrucksNeeded: totalNeeded,
       trucksCompleted,
       trucksEnRoute,
-      trucksWaiting: Math.max(0, trucksWaiting),
+      trucksWaiting,
       lateTrucks,
       delayMinutes,
       estimatedCompletion: estimatedCompletionTime?.toISOString() || null
@@ -313,6 +307,7 @@ export function resetDelivery(): void {
   nextDispatchTime = null;
   config = null;
   routeGeometry = null;
+  corridorSegmentCount = 0;
   isRunning = false;
   console.log('🔄 Delivery session reset');
 }
@@ -321,7 +316,6 @@ export function isDeliveryRunning(): boolean {
   return isRunning;
 }
 
-// Re-export for backward compat
 export function getTrucks(): ConcreteTruck[] {
   return Array.from(activeTrucks.values());
 }

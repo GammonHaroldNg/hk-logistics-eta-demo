@@ -2,7 +2,10 @@
 // delivery.js — Concrete Delivery Tracking
 // ========================================
 // Depends on globals from index.html:
-//   map, APIBASE, allRoutes, zoomToRoute
+//   map, allRoutes, zoomToRoute, zoomToProjectRoutes
+
+// ===== API BASE (same-origin fallback) =====
+var DELIVERY_API = (typeof APIBASE !== 'undefined' && APIBASE) ? APIBASE : '';
 
 let deliveryInterval = null;
 let truckMarkers = {};
@@ -12,11 +15,12 @@ function renderDeliveryForm() {
   const container = document.getElementById('projectRouteInfo');
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:10px;">
-      <div>
-        <label style="font-size:12px;color:#6b7280;">Route</label>
-        <select id="deliveryRoute" style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
-          <option value="">Select project route...</option>
-        </select>
+      <div style="padding:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;">
+        <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:4px;">📍 Full Project Corridor</div>
+        <div style="font-size:11px;color:#6b7280;">
+          Concrete Plant (S) → Construction Site (E)<br>
+          All 92 project route segments combined
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
@@ -56,28 +60,11 @@ function renderDeliveryForm() {
       </div>
     </div>
   `;
-
-  // Populate route selector with project routes
-  const select = document.getElementById('deliveryRoute');
-  if (allRoutes && allRoutes.length > 0) {
-    allRoutes
-      .filter(f => f.properties && f.properties.ISPROJECT)
-      .forEach(f => {
-        const opt = document.createElement('option');
-        opt.value = f.properties.ROUTEID;
-        opt.textContent = f.properties.Name || ('Route ' + f.properties.ROUTEID);
-        select.appendChild(opt);
-      });
-  }
 }
 
-// ===== START DELIVERY =====
+// ===== START DELIVERY (uses all 92 routes) =====
 async function startDelivery() {
-  const routeId = document.getElementById('deliveryRoute').value;
-  if (!routeId) { alert('Please select a route'); return; }
-
   const body = {
-    routeId: Number(routeId),
     targetVolume: Number(document.getElementById('deliveryTarget').value),
     volumePerTruck: Number(document.getElementById('deliveryPerTruck').value),
     trucksPerHour: Number(document.getElementById('deliveryFrequency').value),
@@ -85,12 +72,16 @@ async function startDelivery() {
   };
 
   try {
-    const resp = await fetch(APIBASE + 'api/delivery/start', {
+    const resp = await fetch(DELIVERY_API + 'api/delivery/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     const data = await resp.json();
+    if (!resp.ok) {
+      alert('Error: ' + (data.error || 'Unknown error'));
+      return;
+    }
     console.log('Delivery started:', data);
 
     document.getElementById('btnStartDelivery').style.display = 'none';
@@ -100,18 +91,20 @@ async function startDelivery() {
     pollDeliveryStatus();
     deliveryInterval = setInterval(pollDeliveryStatus, 3000);
 
-    // Zoom to the selected route
-    zoomToRoute(routeId);
+    // Zoom to full project corridor
+    if (typeof zoomToProjectRoutes === 'function') {
+      zoomToProjectRoutes();
+    }
   } catch (err) {
     console.error('Failed to start delivery:', err);
-    alert('Failed to start delivery. Check console.');
+    alert('Failed to start delivery: ' + err.message);
   }
 }
 
 // ===== STOP =====
 async function stopDeliverySession() {
   try {
-    await fetch(APIBASE + 'api/delivery/stop', { method: 'POST' });
+    await fetch(DELIVERY_API + 'api/delivery/stop', { method: 'POST' });
     if (deliveryInterval) { clearInterval(deliveryInterval); deliveryInterval = null; }
     document.getElementById('btnStartDelivery').style.display = 'block';
     document.getElementById('btnStopDelivery').style.display = 'none';
@@ -121,12 +114,10 @@ async function stopDeliverySession() {
 // ===== RESET =====
 async function resetDeliverySession() {
   try {
-    await fetch(APIBASE + 'api/delivery/reset', { method: 'POST' });
+    await fetch(DELIVERY_API + 'api/delivery/reset', { method: 'POST' });
     if (deliveryInterval) { clearInterval(deliveryInterval); deliveryInterval = null; }
-    // Clear truck markers from map
     Object.values(truckMarkers).forEach(function(m) { map.removeLayer(m); });
     truckMarkers = {};
-    // Reset UI
     document.getElementById('btnStartDelivery').style.display = 'block';
     document.getElementById('btnStopDelivery').style.display = 'none';
     document.getElementById('projectVehicleList').innerHTML = '';
@@ -138,7 +129,7 @@ async function resetDeliverySession() {
 // ===== POLL STATUS =====
 async function pollDeliveryStatus() {
   try {
-    const resp = await fetch(APIBASE + 'api/delivery/status');
+    const resp = await fetch(DELIVERY_API + 'api/delivery/status');
     const data = await resp.json();
     if (!data.running) return;
     updateDeliveryUI(data);
@@ -152,15 +143,13 @@ async function pollDeliveryStatus() {
 function updateDeliveryUI(data) {
   var p = data.progress;
   var c = data.config;
-
-  // --- Progress section ---
   var pct = p.percentComplete;
   var barColor = p.delayMinutes > 0 ? '#ef4444' : '#22c55e';
 
   document.getElementById('projectRouteInfo').innerHTML =
     '<div style="margin-bottom:12px;">' +
       '<div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:4px;">' +
-        '<span>Route ' + c.routeId + '</span>' +
+        '<span>Full Corridor (' + c.totalSegments + ' segments)</span>' +
         '<span>' + p.delivered + ' / ' + c.targetVolume + ' m³</span>' +
       '</div>' +
       '<div style="background:#e5e7eb;border-radius:8px;height:20px;overflow:hidden;">' +
@@ -244,7 +233,6 @@ function updateDeliveryUI(data) {
 
 // ===== TRUCK MARKERS ON MAP =====
 function updateTruckMarkers(trucks) {
-  // Remove stale markers
   var currentIds = {};
   trucks.forEach(function(t) { currentIds[t.truckId] = true; });
   Object.keys(truckMarkers).forEach(function(id) {
@@ -256,20 +244,17 @@ function updateTruckMarkers(trucks) {
 
   trucks.forEach(function(t) {
     if (!t.position || t.position[0] === 0) return;
-    var latLng = [t.position[1], t.position[0]]; // [lat, lng]
+    var latLng = [t.position[1], t.position[0]];
     var isArrived = t.status === 'arrived';
     var bgColor = isArrived ? (t.isLate ? '#ef4444' : '#22c55e') : '#3b82f6';
     var emoji = isArrived ? '✅' : '🚛';
 
     if (truckMarkers[t.truckId]) {
-      // Move existing marker
       truckMarkers[t.truckId].setLatLng(latLng);
-      // Update icon if status changed to arrived
       if (isArrived) {
         truckMarkers[t.truckId].setIcon(makeTruckIcon(bgColor, emoji));
       }
     } else {
-      // Create new marker
       var marker = L.marker(latLng, {
         icon: makeTruckIcon(bgColor, emoji),
         zIndexOffset: 1000

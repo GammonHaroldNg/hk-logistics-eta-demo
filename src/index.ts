@@ -289,30 +289,47 @@ app.get('/api/tracking/:routeId', (req: any, res: any) => {
 app.post('/api/delivery/start', (req: any, res: any) => {
   try {
     const {
-      routeId,
       targetVolume = 600,
       volumePerTruck = 8,
       trucksPerHour = 12,
       defaultSpeed = 40
     } = req.body;
 
-    if (!routeId) {
-      return res.status(400).json({ error: 'routeId is required' });
+    // Build combined corridor from ALL 92 project routes
+    const allCorridors = getAllCorridors();
+    const allCoords: [number, number][] = [];
+    let segmentCount = 0;
+
+    for (const routeId of projectRouteIds) {
+      const corridor = allCorridors[routeId];
+      if (!corridor || !corridor.geometry) continue;
+      const geom = corridor.geometry;
+      const coords = geom.type === 'MultiLineString'
+        ? geom.coordinates.flat()
+        : geom.coordinates;
+      if (coords && coords.length > 0) {
+        allCoords.push(...coords);
+        segmentCount++;
+      }
     }
 
-    const route = findRoute(Number(routeId));
-    if (!route) {
-      return res.status(404).json({ error: `Route ${routeId} not found` });
+    if (allCoords.length === 0) {
+      return res.status(400).json({ error: 'No project route geometry found' });
     }
+
+    const mergedGeometry = {
+      type: 'LineString' as const,
+      coordinates: allCoords
+    };
 
     const result = startDeliverySession({
-      routeId: Number(routeId),
+      routeId: 0,
       targetVolume,
       volumePerTruck,
       trucksPerHour,
       startTime: new Date(),
       defaultSpeed
-    }, route.geometry);
+    }, mergedGeometry, segmentCount);
 
     res.json(result);
   } catch (error) {
@@ -320,6 +337,7 @@ app.post('/api/delivery/start', (req: any, res: any) => {
     res.status(500).json({ error: String(error) });
   }
 });
+
 
 app.get('/api/delivery/status', (req: any, res: any) => {
   try {
