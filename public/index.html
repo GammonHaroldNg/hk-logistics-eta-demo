@@ -241,6 +241,9 @@
         initMap();
         loadTrafficData();
         loadAndDisplayRoutes();
+        setTimeout(function() {
+          if (currentPanel === 'project') renderDeliveryForm();
+        }, 2000);
 
         setInterval(loadTrafficData, 60000);
 
@@ -284,6 +287,7 @@
         currentPanel = 'project';
         document.getElementById('projectPanel').style.display = 'block';
         document.getElementById('overviewPanel').style.display = 'none';
+         renderDeliveryForm();  // ← ADD THIS LINE
       }
 
       function showStatusPanel() {
@@ -616,6 +620,6 @@
 
 
     </script>
-
+    <script src="js/delivery.js"></script>
 </body>
 </html>

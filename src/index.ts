@@ -2,38 +2,27 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
-const projectRootDir = path.resolve(); // or appRootDir
+const projectRootDir = path.resolve();
 
 // ===== IMPORTS =====
-
 import { corridors, updateCorridorState } from './services/tdas';
-import { tickSimulation } from './services/simulation';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
 import { fetchAdditionalCorridorsFromWFS } from './services/wfsService';
-
-
-
-import {
-  initializeTrucks,
-  updateTruckProgress,
-  getTrucks,
-  getDeliveryRecords,
-  getTotalConcreteDelivered,
-  resetSimulation,
-  getActiveCount,
-  getCompletedCount
-} from './services/truckService';
-
 import { calculateRouteDistance, formatTime } from './services/etaService';
-import { runTests } from './test-backend';
 
 import {
   loadCorridorsFromGeoJSON,
+  getAllCorridors,
   getFilteredCorridors,
   buildFilteredCorridors
 } from './services/corridorService';
 
-
+import {
+  startDeliverySession, tickDelivery, getDeliveryStatus,
+  stopDelivery, resetDelivery, isDeliveryRunning,
+  getTrucks, getTotalConcreteDelivered, getActiveCount,
+  getCompletedCount, getDeliveryRecords
+} from './services/truckService';
 
 const app = express();
 const PORT = 3000;
@@ -63,25 +52,56 @@ function findRoute(routeId: number): any {
   return allCorridors[routeId] || null;
 }
 
-// Load corridors on startup
+// ===== TRAFFIC UPDATE =====
+async function updateTrafficData() {
+  try {
+    const speedMap = await fetchTrafficSpeedMap();
+    console.log('TDAS speedMap size:', speedMap.size);
+
+    const allCorridors = getAllCorridors();
+    const corridorIds = Object.keys(allCorridors).map(Number);
+    console.log('Corridors available when updating traffic:', corridorIds.length);
+    console.log('Sample corridor IDs:', corridorIds.slice(0, 10));
+
+    const sampleSegments: number[] = [];
+    for (const [segId] of speedMap.entries()) {
+      sampleSegments.push(Number(segId));
+      if (sampleSegments.length >= 10) break;
+    }
+    console.log('Sample TDAS ids:', sampleSegments);
+
+    let updateCount = 0;
+    for (const [segmentId, data] of speedMap.entries()) {
+      const routeId = Number(segmentId);
+      const state = speedToState(data.speed);
+
+      if (allCorridors[routeId]) {
+        updateCorridorState(routeId, state, data.speed);
+        updateCount++;
+      }
+    }
+
+    lastTrafficUpdateTime = new Date();
+    console.log('✓ Updated traffic state for', updateCount, 'routes');
+  } catch (err) {
+    console.error('Error updating traffic:', err);
+  }
+}
+
+// ===== STARTUP =====
 (async () => {
   try {
-    // 1) Always load local project GeoJSON
+    // 1) Load local project GeoJSON
     await loadCorridorsFromGeoJSON();
-    console.log(
-      '✓ Project corridors loaded:',
-      Object.keys(getAllCorridors()).length
-    );
+    console.log('✓ Project corridors loaded:', Object.keys(getAllCorridors()).length);
 
-    // 2) First TDAS update – guarantees project routes get TDAS
+    // 2) First TDAS update
     await updateTrafficData();
 
-    // 3) Kick off WFS enrichment in the background (do NOT await)
+    // 3) WFS enrichment in background
     fetchAdditionalCorridorsFromWFS()
       .then(async () => {
         console.log('✓ WFS enrichment finished in background');
-
-        // After WFS enriches allCorridors, run TDAS once more for new routes
         await updateTrafficData();
 
         const tdasRouteIds = new Set<number>();
@@ -98,61 +118,57 @@ function findRoute(routeId: number): any {
         console.error('⚠ WFS enrichment failed in background:', err);
       });
 
-    // 4) Initial filtered corridors using current TDAS + project only
+    // 4) Initial filtered corridors
     const tdasRouteIds = new Set<number>();
     for (const routeIdStr of Object.keys(corridors)) {
       tdasRouteIds.add(Number(routeIdStr));
     }
     buildFilteredCorridors(tdasRouteIds);
     console.log(
-      '✓ Filtered corridors ready (project-only / initial TDAS), count:',
+      '✓ Filtered corridors ready, count:',
       Object.keys(getFilteredCorridors()).length
     );
 
     // 5) Start timers
     setInterval(updateTrafficData, 60000);
-    setInterval(() => tickSimulation(1), 1000);
-    console.log('✓ Truck simulation started (with current corridors)');
+    setInterval(() => {
+      if (isDeliveryRunning()) {
+        tickDelivery(1);
+      }
+    }, 1000);
+
+    console.log('✓ Server initialized, delivery tick running');
   } catch (err) {
     console.error('Failed to initialize app:', err);
   }
 })();
 
-
-
 // ===== PAGE ROUTES =====
-
-// Home page - Overview
 app.get('/', (req: any, res: any) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-// Tracking page - Individual route tracking
 app.get('/tracking', (req: any, res: any) => {
   res.sendFile(path.join(__dirname, '../public/tracking.html'));
 });
 
-// ===== API ENDPOINTS =====
-
-// Get all routes with traffic data (WITH MODE FILTERING)
+// ===== API: ROUTES =====
 app.get('/api/routes', (req: any, res: any) => {
   try {
     const mode = req.query.mode || 'overview';
-    const allCorridors = getFilteredCorridors(); // will be filtered later
+    const filteredCorridors = getFilteredCorridors();
 
-    const features = Object.entries(allCorridors)
+    const features = Object.entries(filteredCorridors)
       .filter(([routeIdStr]) => {
         const routeId = Number(routeIdStr);
         if (mode === 'focused') {
-          return projectRouteIds.has(routeId);   // ONLY project routes
+          return projectRouteIds.has(routeId);
         }
-        // overview: ALL filtered routes
         return true;
       })
       .map(([routeIdStr, feature]: [string, any]) => {
         const routeId = Number(routeIdStr);
         const tdas = corridors[routeId];
-
         return {
           type: 'Feature',
           properties: {
@@ -183,23 +199,17 @@ app.get('/api/routes', (req: any, res: any) => {
   }
 });
 
-// ===== TRAFFIC API =====
-
-// Get traffic data for overview
+// ===== API: TRAFFIC =====
 app.get('/api/traffic', (req: any, res: any) => {
   try {
     const stateMap: any = {};
-    const allCorridors = getFilteredCorridors(); // filtered set
+    const filteredCorridors = getFilteredCorridors();
 
-    for (const [routeIdStr] of Object.entries(allCorridors)) {
+    for (const [routeIdStr] of Object.entries(filteredCorridors)) {
       const routeId = Number(routeIdStr);
       const tdas = corridors[routeId];
-      if (!tdas) continue; // only routes with TDAS
-
-      stateMap[routeId] = {
-        state: tdas.state,
-        speed: tdas.speed
-      };
+      if (!tdas) continue;
+      stateMap[routeId] = { state: tdas.state, speed: tdas.speed };
     }
 
     res.json({
@@ -213,17 +223,14 @@ app.get('/api/traffic', (req: any, res: any) => {
   }
 });
 
-
-// Get corridors/routes data
+// ===== API: CORRIDORS =====
 app.get('/api/corridors', (req: any, res: any) => {
   try {
-    const allCorridors = getFilteredCorridors();
+    const filteredCorridors = getFilteredCorridors();
     const corridorData: any = {};
-    for (const [routeIdStr, corridor] of Object.entries(allCorridors)) {
-      const routeId = Number(routeIdStr);
-      corridorData[routeId] = corridor;
+    for (const [routeIdStr, corridor] of Object.entries(filteredCorridors)) {
+      corridorData[Number(routeIdStr)] = corridor;
     }
-
     res.json(corridorData);
   } catch (error) {
     console.error('Error in /api/corridors:', error);
@@ -231,25 +238,18 @@ app.get('/api/corridors', (req: any, res: any) => {
   }
 });
 
-// ===== TRACKING ENDPOINTS =====
-
-// Get tracking status for a route
+// ===== API: TRACKING (legacy, still works) =====
 app.get('/api/tracking/:routeId', (req: any, res: any) => {
   try {
     const routeId = Number(req.params.routeId);
     const route = findRoute(routeId);
 
     if (!route) {
-      const allCorridors = getFilteredCorridors();
-      const availableRoutes = Object.values(allCorridors)
-        .map((c: any) => c?.properties?.ROUTEID)
-        .filter(Boolean)
-        .slice(0, 10);
-
+      const available = Object.keys(getFilteredCorridors()).slice(0, 10);
       return res.status(404).json({
         error: `Route ${routeId} not found`,
-        availableRoutes: availableRoutes,
-        hint: `Try one of these: ${availableRoutes.join(', ')}`
+        availableRoutes: available,
+        hint: `Try one of these: ${available.join(', ')}`
       });
     }
 
@@ -269,7 +269,8 @@ app.get('/api/tracking/:routeId', (req: any, res: any) => {
         status: t.status,
         position: t.currentPosition,
         progress: (t.progressRatio * 100).toFixed(1),
-        eta: formatTime(t.eta)
+        estimatedArrival: t.estimatedArrival.toISOString(),
+        elapsedSeconds: t.elapsedSeconds
       })),
       statistics: {
         totalDelivered: getTotalConcreteDelivered(),
@@ -284,103 +285,89 @@ app.get('/api/tracking/:routeId', (req: any, res: any) => {
   }
 });
 
-// Start tracking for a route
-app.post('/api/tracking/:routeId/start', (req: any, res: any) => {
+// ===== API: DELIVERY (new Session 9) =====
+app.post('/api/delivery/start', (req: any, res: any) => {
   try {
-    const routeId = Number(req.params.routeId);
-    const truckCount = req.body.truckCount || 5;
-    const route = findRoute(routeId);
+    const {
+      routeId,
+      targetVolume = 600,
+      volumePerTruck = 8,
+      trucksPerHour = 12,
+      defaultSpeed = 40
+    } = req.body;
 
-    if (!route) {
-      const allCorridors = getFilteredCorridors();
-      const availableRoutes = Object.values(allCorridors)
-        .map((c: any) => c?.properties?.ROUTEID)
-        .filter(Boolean)
-        .slice(0, 10);
-
-      return res.status(404).json({
-        error: `Route ${routeId} not found`,
-        availableRoutes: availableRoutes
-      });
+    if (!routeId) {
+      return res.status(400).json({ error: 'routeId is required' });
     }
 
-    resetSimulation();
-    initializeTrucks(routeId, route.geometry, truckCount);
-    const trucks = getTrucks();
-
-    console.log(`📍 Started tracking for route ${routeId} with ${truckCount} trucks`);
-
-    res.json({
-      message: 'Simulation started',
-      routeId: routeId,
-      routeName: route.properties.NAME,
-      truckCount: truckCount,
-      trucks: trucks.map(t => ({
-        truckId: t.truckId,
-        eta: formatTime(t.eta)
-      })),
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error in /api/tracking/:routeId/start:', error);
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-// Advance simulation
-app.post('/api/simulation/tick', (req: any, res: any) => {
-  try {
-    const { routeId, deltaSeconds } = req.body;
-
-    if (!routeId || deltaSeconds === undefined) {
-      return res.status(400).json({ error: 'Missing routeId or deltaSeconds' });
-    }
-
-    const route = findRoute(routeId);
+    const route = findRoute(Number(routeId));
     if (!route) {
       return res.status(404).json({ error: `Route ${routeId} not found` });
     }
 
-    updateTruckProgress(deltaSeconds, route.geometry);
-    const trucks = getTrucks();
+    const result = startDeliverySession({
+      routeId: Number(routeId),
+      targetVolume,
+      volumePerTruck,
+      trucksPerHour,
+      startTime: new Date(),
+      defaultSpeed
+    }, route.geometry);
 
-    res.json({
-      timestamp: new Date().toISOString(),
-      routeId: routeId,
-      deltaSeconds: deltaSeconds,
-      trucks: trucks.map(t => ({
-        truckId: t.truckId,
-        status: t.status,
-        position: t.currentPosition,
-        progress: (t.progressRatio * 100).toFixed(1),
-        eta: formatTime(t.eta)
-      })),
-      statistics: {
-        totalDelivered: getTotalConcreteDelivered(),
-        activeCount: getActiveCount(),
-        completedCount: getCompletedCount()
-      }
-    });
+    res.json(result);
   } catch (error) {
-    console.error('Error in /api/simulation/tick:', error);
+    console.error('Error in /api/delivery/start:', error);
     res.status(500).json({ error: String(error) });
   }
 });
 
-// Get trucks for a specific route
+app.get('/api/delivery/status', (req: any, res: any) => {
+  try {
+    const status = getDeliveryStatus();
+    if (!status) {
+      return res.json({ running: false, message: 'No active delivery session' });
+    }
+    res.json({ running: true, ...status });
+  } catch (error) {
+    console.error('Error in /api/delivery/status:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/delivery/stop', (req: any, res: any) => {
+  try {
+    stopDelivery();
+    const status = getDeliveryStatus();
+    res.json({ message: 'Delivery stopped', ...status });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+app.post('/api/delivery/reset', (req: any, res: any) => {
+  try {
+    resetDelivery();
+    res.json({ message: 'Delivery session reset' });
+  } catch (error) {
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// ===== API: TRUCKS =====
 app.get('/api/trucks/:routeId', (req: any, res: any) => {
   try {
     const routeId = Number(req.params.routeId);
     const trucks = getTrucks().filter(t => t.routeId === routeId);
 
     res.json({
-      routeId: routeId,
+      routeId,
       trucks: trucks.map(t => ({
         truckId: t.truckId,
         status: t.status,
         position: t.currentPosition,
         progress: (t.progressRatio * 100).toFixed(1),
-        eta: formatTime(t.eta)
+        estimatedArrival: t.estimatedArrival.toISOString(),
+        elapsedSeconds: t.elapsedSeconds
       })),
       count: trucks.length,
       timestamp: new Date().toISOString()
@@ -391,53 +378,7 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
   }
 });
 
-// in updateTrafficData()
-import { getAllCorridors } from './services/corridorService';
-
-async function updateTrafficData() {
-  try {
-    const speedMap = await fetchTrafficSpeedMap();
-    console.log('TDAS speedMap size:', speedMap.size);
-
-    const allCorridors = getAllCorridors();
-    const corridorIds = Object.keys(allCorridors).map(Number);
-    console.log(
-      'Corridors available when updating traffic:',
-      corridorIds.length
-    );
-    console.log(
-      'Sample corridor IDs:',
-      corridorIds.slice(0, 10)
-    );
-
-    const sampleSegments: number[] = [];
-    for (const [segId] of speedMap.entries()) {
-      sampleSegments.push(Number(segId));
-      if (sampleSegments.length >= 10) break;
-    }
-    console.log('Sample TDAS ids:', sampleSegments);
-
-    let updateCount = 0;
-    for (const [segmentId, data] of speedMap.entries()) {
-      const routeId = Number(segmentId);
-      const state = speedToState(data.speed);
-
-      if (allCorridors[routeId]) {
-        updateCorridorState(routeId, state, data.speed);
-        updateCount++;
-      }
-    }
-
-    lastTrafficUpdateTime = new Date();
-    console.log('✓ Updated traffic state for', updateCount, 'routes');
-  } catch (err) {
-    console.error('Error updating traffic:', err);
-  }
-}
-
-
-
-// Start server only in local/dev (not on Vercel)
+// ===== START SERVER =====
 if (process.env.VERCEL !== 'true') {
   app.listen(PORT, () => {
     console.log(`🚀 Server running at http://localhost:${PORT}`);
@@ -447,5 +388,4 @@ if (process.env.VERCEL !== 'true') {
   });
 }
 
-// Export Express app for Vercel serverless function
 export default app;
