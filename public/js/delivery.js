@@ -193,7 +193,7 @@ function updateDeliveryUI(data) {
         '</div>' +
         '<div class="vehicle-item-eta">' +
           (t.status === 'en-route'
-            ? 'Speed: ' + t.currentSpeed + ' km/h · ETA: ' + etaStr
+            ? 'Travel: ' + Math.round(t.elapsedSeconds / 60) + ' min · Arriving: ' + etaStr
             : 'Arrived: ' + etaStr + ' · ' + t.concreteVolume + 'm³' + (t.isLate ? ' (LATE)' : '')) +
         '</div></div>';
     }).join('');
@@ -262,7 +262,6 @@ function updateTruckMarkers(trucks) {
         '<b>' + t.truckId + '</b><br>' +
         'Status: ' + t.status + '<br>' +
         'Progress: ' + t.progress + '%<br>' +
-        'Speed: ' + t.currentSpeed + ' km/h<br>' +
         'Volume: ' + t.concreteVolume + ' m³'
       ).addTo(map);
       truckMarkers[t.truckId] = marker;

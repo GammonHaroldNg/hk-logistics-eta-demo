@@ -53,17 +53,19 @@ let isRunning = false;
 
 // ===== AVERAGE SPEED ACROSS ALL PROJECT ROUTES =====
 function getAverageProjectSpeed(defaultSpeed: number): number {
+  const MIXER_MAX_SPEED = 60; // loaded concrete truck practical cap in HK
   let totalSpeed = 0;
   let count = 0;
   for (const routeIdStr of Object.keys(corridors)) {
     const data = corridors[Number(routeIdStr)];
     if (data && data.speed && data.speed > 0) {
-      totalSpeed += data.speed;
+      totalSpeed += Math.min(data.speed, MIXER_MAX_SPEED); // cap each segment
       count++;
     }
   }
   return count > 0 ? totalSpeed / count : defaultSpeed;
 }
+
 
 // ===== INIT =====
 export function startDeliverySession(
