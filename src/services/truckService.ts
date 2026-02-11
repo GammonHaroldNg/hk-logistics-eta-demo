@@ -1,5 +1,11 @@
 import { calculateRouteDistance, interpolatePosition } from './etaService';
 import { corridors } from './tdas';
+import { getAllCorridors } from './corridorService';
+import { PROJECT_ROUTE_IDS } from '../constants/projectRoutes';
+
+
+// ===== CONSTANTS =====
+const MIXER_MAX_SPEED = 60; // km/h — loaded concrete truck cap in HK
 
 // ===== TYPES =====
 export interface ConcreteTruck {
@@ -16,7 +22,6 @@ export interface ConcreteTruck {
   totalDistance: number;
   currentSpeed: number;
   concreteVolume: number;
-  isLate: boolean;
 }
 
 export interface DeliveryRecord {
@@ -25,15 +30,14 @@ export interface DeliveryRecord {
   routeId: number;
   departureTime: Date;
   arrivalTime: Date;
-  plannedArrival: Date;
   travelTimeSeconds: number;
   concreteVolume: number;
-  wasLate: boolean;
   cumulativeVolume: number;
+  hourWindow: number; // which hour window (0-based)
 }
 
 export interface DeliveryConfig {
-  routeId: number;           // 0 = all project routes combined
+  routeId: number;
   targetVolume: number;
   volumePerTruck: number;
   trucksPerHour: number;
@@ -51,21 +55,32 @@ let routeGeometry: any = null;
 let corridorSegmentCount = 0;
 let isRunning = false;
 
-// ===== AVERAGE SPEED ACROSS ALL PROJECT ROUTES =====
+// ===== SPEED: average TDAS capped at mixer max =====
 function getAverageProjectSpeed(defaultSpeed: number): number {
-  const MIXER_MAX_SPEED = 60; // loaded concrete truck practical cap in HK
-  let totalSpeed = 0;
-  let count = 0;
-  for (const routeIdStr of Object.keys(corridors)) {
-    const data = corridors[Number(routeIdStr)];
-    if (data && data.speed && data.speed > 0) {
-      totalSpeed += Math.min(data.speed, MIXER_MAX_SPEED); // cap each segment
-      count++;
-    }
-  }
-  return count > 0 ? totalSpeed / count : defaultSpeed;
-}
+  const allCorridors = getAllCorridors();
+  let totalWeightedSpeed = 0;
+  let totalDistance = 0;
 
+  for (const routeId of PROJECT_ROUTE_IDS) {
+    const tdasData = corridors[routeId];
+    const corridor: any = allCorridors[routeId];
+
+    if (!corridor || !corridor.geometry) continue;
+
+    const segDist = calculateRouteDistance(corridor.geometry);
+    if (segDist <= 0) continue;
+
+    const speed = (tdasData && tdasData.speed > 0)
+      ? Math.min(tdasData.speed, MIXER_MAX_SPEED)
+      : Math.min(defaultSpeed, MIXER_MAX_SPEED);
+
+    totalWeightedSpeed += speed * segDist;
+    totalDistance += segDist;
+  }
+
+  if (totalDistance <= 0) return Math.min(defaultSpeed, MIXER_MAX_SPEED);
+  return totalWeightedSpeed / totalDistance;
+}
 
 // ===== INIT =====
 export function startDeliverySession(
@@ -90,7 +105,7 @@ export function startDeliverySession(
   dispatchTruck();
 
   return {
-    message: `Delivery started: ${totalTrucksNeeded} trucks needed, 1 every ${intervalMinutes} min, ${totalDist.toFixed(1)} km corridor`,
+    message: 'Delivery started: ' + totalTrucksNeeded + ' trucks needed, 1 every ' + intervalMinutes + ' min, ' + totalDist.toFixed(1) + ' km corridor',
     totalTrucksNeeded,
     intervalMinutes,
     totalDistance: totalDist.toFixed(1),
@@ -114,10 +129,10 @@ function dispatchTruck(): ConcreteTruck | null {
 
   const coords = routeGeometry.coordinates || [];
   const startPos: [number, number] = coords.length > 0
-    ? [coords[0][0], coords[0][1]]
+    ? [coords[0]![0]!, coords[0]![1]!]
     : [0, 0];
 
-  const truckId = `CMX-${String(nextTruckNumber).padStart(3, '0')}`;
+  const truckId = 'CMX-' + String(nextTruckNumber).padStart(3, '0');
   const truck: ConcreteTruck = {
     truckId,
     truckNumber: nextTruckNumber,
@@ -131,8 +146,7 @@ function dispatchTruck(): ConcreteTruck | null {
     elapsedSeconds: 0,
     totalDistance: totalDist,
     currentSpeed,
-    concreteVolume: config.volumePerTruck,
-    isLate: false
+    concreteVolume: config.volumePerTruck
   };
 
   activeTrucks.set(truckId, truck);
@@ -141,7 +155,7 @@ function dispatchTruck(): ConcreteTruck | null {
   const intervalMs = (60 / config.trucksPerHour) * 60 * 1000;
   nextDispatchTime = new Date(now.getTime() + intervalMs);
 
-  console.log(`🚛 Dispatched ${truckId} | Speed: ${currentSpeed.toFixed(1)} km/h | ETA: ${travelTimeSeconds.toFixed(0)}s | Dist: ${totalDist.toFixed(1)}km`);
+  console.log('Dispatched ' + truckId + ' | Speed: ' + currentSpeed.toFixed(1) + ' km/h | ETA: ' + Math.round(travelTimeSeconds) + 's');
   return truck;
 }
 
@@ -185,14 +199,9 @@ function completeTruck(truckId: string, now: Date): void {
   truck.arrivalTime = now;
   truck.progressRatio = 1;
 
-  const plannedIntervalMs = (60 / config.trucksPerHour) * 60 * 1000;
-  const plannedArrival = new Date(
-    config.startTime.getTime() +
-    (truck.truckNumber - 1) * plannedIntervalMs +
-    getBaselineTravelTime() * 1000
-  );
-
-  truck.isLate = now > plannedArrival;
+  // Determine which hour window this arrival falls in
+  const elapsedMs = now.getTime() - config.startTime.getTime();
+  const hourWindow = Math.floor(elapsedMs / 3600000);
 
   const cumulativeVol = deliveryLog.reduce((s, r) => s + r.concreteVolume, 0) + truck.concreteVolume;
 
@@ -202,49 +211,126 @@ function completeTruck(truckId: string, now: Date): void {
     routeId: truck.routeId,
     departureTime: truck.departureTime,
     arrivalTime: now,
-    plannedArrival,
     travelTimeSeconds: truck.elapsedSeconds,
     concreteVolume: truck.concreteVolume,
-    wasLate: truck.isLate,
-    cumulativeVolume: cumulativeVol
+    cumulativeVolume: cumulativeVol,
+    hourWindow
   });
 
-  console.log(`✅ ${truckId} arrived | ${truck.elapsedSeconds.toFixed(0)}s | Late: ${truck.isLate} | Cumulative: ${cumulativeVol}m³`);
+  console.log('Arrived ' + truckId + ' | ' + Math.round(truck.elapsedSeconds) + 's | Window ' + hourWindow + ' | Cumulative: ' + cumulativeVol + 'm3');
 }
 
 function getBaselineTravelTime(): number {
   if (!config || !routeGeometry) return 1800;
   const dist = calculateRouteDistance(routeGeometry);
-  return (dist / config.defaultSpeed) * 3600;
+  return (dist / Math.min(config.defaultSpeed, MIXER_MAX_SPEED)) * 3600;
 }
 
-// ===== QUERIES =====
+// ===== THROUGHPUT ANALYSIS =====
+function getThroughputAnalysis(): {
+  currentWindow: number;
+  windowTarget: number;
+  windowActual: number;
+  windowShortfall: number;
+  hourlyBreakdown: Array<{ hour: number; target: number; actual: number; diff: number }>;
+  actualRate: number;
+  behindSchedule: boolean;
+  delayMinutes: number;
+} {
+  if (!config) {
+    return {
+      currentWindow: 0, windowTarget: 0, windowActual: 0, windowShortfall: 0,
+      hourlyBreakdown: [], actualRate: 0, behindSchedule: false, delayMinutes: 0
+    };
+  }
+
+  const now = new Date();
+  const elapsedMs = now.getTime() - config.startTime.getTime();
+  const elapsedHours = elapsedMs / 3600000;
+  const currentWindow = Math.floor(elapsedHours);
+  const fractionIntoCurrentHour = elapsedHours - currentWindow;
+
+  // How many trucks SHOULD have arrived by now (pro-rated)
+  const expectedByNow = Math.floor(elapsedHours * config.trucksPerHour);
+  const actualTotal = deliveryLog.length;
+
+  // Hourly breakdown
+  const maxWindow = currentWindow + 1;
+  const hourlyBreakdown: Array<{ hour: number; target: number; actual: number; diff: number }> = [];
+
+  for (let h = 0; h < maxWindow; h++) {
+    const arrivalsInWindow = deliveryLog.filter(r => r.hourWindow === h).length;
+    const isCurrentHour = h === currentWindow;
+    // For the current partial hour, pro-rate the target
+    const target = isCurrentHour
+      ? Math.floor(fractionIntoCurrentHour * config.trucksPerHour)
+      : config.trucksPerHour;
+    hourlyBreakdown.push({
+      hour: h,
+      target,
+      actual: arrivalsInWindow,
+      diff: arrivalsInWindow - target
+    });
+  }
+
+  // Current window stats
+  const currentWindowArrivals = deliveryLog.filter(r => r.hourWindow === currentWindow).length;
+  const currentWindowTarget = Math.floor(fractionIntoCurrentHour * config.trucksPerHour);
+
+  // Actual throughput rate (trucks per hour based on all completions)
+  const actualRate = elapsedHours > 0 ? actualTotal / elapsedHours : 0;
+
+  // Shortfall & delay
+  const shortfall = Math.max(0, expectedByNow - actualTotal);
+  const behindSchedule = shortfall > 0;
+
+  // Project total completion time
+  const totalNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
+  let delayMinutes = 0;
+
+  if (actualTotal > 0 && actualRate > 0) {
+    const trucksRemaining = totalNeeded - actualTotal;
+    const hoursToFinish = trucksRemaining / actualRate;
+    const projectedFinish = new Date(now.getTime() + hoursToFinish * 3600000);
+
+    // Planned finish: all trucks at target rate
+    const plannedHoursTotal = totalNeeded / config.trucksPerHour;
+    const plannedTravelSeconds = getBaselineTravelTime();
+    const plannedFinish = new Date(config.startTime.getTime() + plannedHoursTotal * 3600000 + plannedTravelSeconds * 1000);
+
+    delayMinutes = Math.max(0, Math.round((projectedFinish.getTime() - plannedFinish.getTime()) / 60000));
+  }
+
+  return {
+    currentWindow,
+    windowTarget: currentWindowTarget,
+    windowActual: currentWindowArrivals,
+    windowShortfall: Math.max(0, currentWindowTarget - currentWindowArrivals),
+    hourlyBreakdown,
+    actualRate: Math.round(actualRate * 10) / 10,
+    behindSchedule,
+    delayMinutes
+  };
+}
+
+// ===== STATUS =====
 export function getDeliveryStatus() {
   if (!config) return null;
 
   const totalNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
   const delivered = deliveryLog.reduce((s, r) => s + r.concreteVolume, 0);
-  const remaining = Math.max(0, config.targetVolume - delivered);
   const trucksCompleted = deliveryLog.length;
   const trucksEnRoute = Array.from(activeTrucks.values()).filter(t => t.status === 'en-route').length;
   const trucksWaiting = Math.max(0, totalNeeded - (trucksCompleted + trucksEnRoute));
-  const lateTrucks = deliveryLog.filter(r => r.wasLate).length;
 
+  const throughput = getThroughputAnalysis();
+
+  // Estimated completion
   let estimatedCompletionTime: Date | null = null;
-  let delayMinutes = 0;
-
-  if (trucksCompleted > 0) {
-    const avgTravelTime = deliveryLog.reduce((s, r) => s + r.travelTimeSeconds, 0) / trucksCompleted;
-    const intervalSeconds = (60 / config.trucksPerHour) * 60;
+  if (throughput.actualRate > 0) {
     const trucksRemaining = totalNeeded - trucksCompleted;
-    const remainingDispatchTime = Math.max(0, (trucksRemaining - trucksEnRoute)) * intervalSeconds;
-    const lastTruckTravelTime = avgTravelTime;
-    const totalRemainingSeconds = remainingDispatchTime + lastTruckTravelTime;
-    estimatedCompletionTime = new Date(Date.now() + totalRemainingSeconds * 1000);
-
-    const plannedTotalSeconds = (totalNeeded - 1) * intervalSeconds + getBaselineTravelTime();
-    const plannedCompletion = new Date(config.startTime.getTime() + plannedTotalSeconds * 1000);
-    delayMinutes = Math.max(0, Math.round((estimatedCompletionTime.getTime() - plannedCompletion.getTime()) / 60000));
+    const hoursToFinish = trucksRemaining / throughput.actualRate;
+    estimatedCompletionTime = new Date(Date.now() + hoursToFinish * 3600000);
   }
 
   return {
@@ -255,19 +341,29 @@ export function getDeliveryStatus() {
       routeId: config.routeId,
       startTime: config.startTime.toISOString(),
       totalSegments: corridorSegmentCount,
-      totalDistance: routeGeometry ? calculateRouteDistance(routeGeometry).toFixed(1) : '0'
+      totalDistance: routeGeometry ? calculateRouteDistance(routeGeometry).toFixed(1) : '0',
+      mixerSpeedCap: MIXER_MAX_SPEED
     },
     progress: {
       delivered,
-      remaining,
+      remaining: Math.max(0, config.targetVolume - delivered),
       percentComplete: config.targetVolume > 0 ? Math.round((delivered / config.targetVolume) * 100) : 0,
       totalTrucksNeeded: totalNeeded,
       trucksCompleted,
       trucksEnRoute,
       trucksWaiting,
-      lateTrucks,
-      delayMinutes,
-      estimatedCompletion: estimatedCompletionTime?.toISOString() || null
+      estimatedCompletion: estimatedCompletionTime ? estimatedCompletionTime.toISOString() : null
+    },
+    throughput: {
+      targetRate: config.trucksPerHour,
+      actualRate: throughput.actualRate,
+      currentWindow: throughput.currentWindow,
+      windowTarget: throughput.windowTarget,
+      windowActual: throughput.windowActual,
+      windowShortfall: throughput.windowShortfall,
+      behindSchedule: throughput.behindSchedule,
+      delayMinutes: throughput.delayMinutes,
+      hourlyBreakdown: throughput.hourlyBreakdown
     },
     trucks: Array.from(activeTrucks.values()).map(t => ({
       truckId: t.truckId,
@@ -278,9 +374,8 @@ export function getDeliveryStatus() {
       currentSpeed: Math.round(t.currentSpeed),
       departureTime: t.departureTime.toISOString(),
       estimatedArrival: t.estimatedArrival.toISOString(),
-      arrivalTime: t.arrivalTime?.toISOString() || null,
+      arrivalTime: t.arrivalTime ? t.arrivalTime.toISOString() : null,
       concreteVolume: t.concreteVolume,
-      isLate: t.isLate,
       elapsedSeconds: Math.round(t.elapsedSeconds)
     })),
     deliveryLog: deliveryLog.map(r => ({
@@ -290,8 +385,8 @@ export function getDeliveryStatus() {
       arrivalTime: r.arrivalTime.toISOString(),
       travelTimeMinutes: Math.round(r.travelTimeSeconds / 60),
       concreteVolume: r.concreteVolume,
-      wasLate: r.wasLate,
-      cumulativeVolume: r.cumulativeVolume
+      cumulativeVolume: r.cumulativeVolume,
+      hourWindow: r.hourWindow
     })),
     timestamp: new Date().toISOString()
   };
@@ -299,7 +394,7 @@ export function getDeliveryStatus() {
 
 export function stopDelivery(): void {
   isRunning = false;
-  console.log('🛑 Delivery session stopped');
+  console.log('Delivery session stopped');
 }
 
 export function resetDelivery(): void {
@@ -311,7 +406,7 @@ export function resetDelivery(): void {
   routeGeometry = null;
   corridorSegmentCount = 0;
   isRunning = false;
-  console.log('🔄 Delivery session reset');
+  console.log('Delivery session reset');
 }
 
 export function isDeliveryRunning(): boolean {
