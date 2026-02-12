@@ -216,7 +216,9 @@ app.get('/tracking', (req: any, res: any) => {
 });
 
 // NEW admin page
-app.use(express.static(path.resolve(__dirname, 'public')));
+app.get('/admin/trips', (req: any, res: any) => {
+  res.sendFile(path.join(__dirname, '../public/admin-trips.html'));
+});
 
 // ===== API: ROUTES =====
 
