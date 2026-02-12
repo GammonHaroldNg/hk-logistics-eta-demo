@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
-
 import { corridors, updateCorridorState } from './services/tdas';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
 import { fetchAdditionalCorridorsFromWFS } from './services/wfsService';
@@ -446,6 +445,102 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
   }
 });
 
+// ===== API: TRIPS =====
+
+// Start a trip
+app.post('/api/trips/start', async (req: any, res: any) => {
+  try {
+    const { vehicleId, actualStartAt, corrected } = req.body || {};
+
+    if (!vehicleId) {
+      return res.status(400).json({ error: 'vehicleId is required' });
+    }
+
+    // if actualStartAt not provided, use now()
+    const startTime = actualStartAt
+      ? new Date(actualStartAt)
+      : new Date();
+
+    const sql = `
+      insert into public.trips (vehicle_id, actual_start_at, status, corrected)
+      values ($1, $2, 'in_progress', coalesce($3, false))
+      returning *;
+    `;
+
+    const result = await query(sql, [
+      vehicleId,
+      startTime.toISOString(),
+      corrected
+    ]);
+
+    const trip = result.rows[0];
+    res.status(201).json({ ok: true, trip });
+  } catch (err: any) {
+    console.error('Error in /api/trips/start:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// Mark trip as arrived
+app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
+  try {
+    const tripId = req.params.id;
+    const { actualArrivalAt, corrected } = req.body || {};
+
+    if (!tripId) {
+      return res.status(400).json({ error: 'trip id is required in URL' });
+    }
+
+    const arrivalTime = actualArrivalAt
+      ? new Date(actualArrivalAt)
+      : new Date();
+
+    const sql = `
+      update public.trips
+      set
+        actual_arrival_at = $1,
+        status = 'completed',
+        corrected = coalesce($2, corrected),
+        updated_at = now()
+      where id = $3
+      returning *;
+    `;
+
+    const result = await query(sql, [
+      arrivalTime.toISOString(),
+      corrected,
+      tripId
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: 'Trip not found' });
+    }
+
+    const trip = result.rows[0];
+    res.json({ ok: true, trip });
+  } catch (err: any) {
+    console.error('Error in /api/trips/:id/arrive:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// (optional) list today's trips – handy for debugging / dashboard
+app.get('/api/trips/today', async (req: any, res: any) => {
+  try {
+    const sql = `
+      select *
+      from public.trips
+      order by created_at asc
+      limit 200;
+    `;
+    const result = await query(sql);
+    res.json({ ok: true, trips: result.rows });
+  } catch (err: any) {
+    console.error('Error in /api/trips/today:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
 import { query } from './db';
 
 app.get('/api/db-test', async (req: any, res: any) => {
@@ -453,10 +548,11 @@ app.get('/api/db-test', async (req: any, res: any) => {
     const result = await query('select now() as now');
     res.json({ ok: true, now: result.rows[0].now });
   } catch (err: any) {
-    console.error('DB test error object:', err);   // <— add this
+    console.error('DB test error object:', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 // ===== START SERVER =====
