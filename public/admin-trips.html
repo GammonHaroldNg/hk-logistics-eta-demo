@@ -35,7 +35,6 @@
       });
       const data = await res.json();
       alert('Start response: ' + JSON.stringify(data));
-      // if ok, fill trip id into the arrive box
       if (data.ok && data.trip && data.trip.id) {
         document.getElementById('arrive-trip-id').value = data.trip.id;
       }
@@ -65,7 +64,6 @@
         JSON.stringify(data, null, 2);
     }
 
-    // load on page open
     loadTrips();
   </script>
 </body>
