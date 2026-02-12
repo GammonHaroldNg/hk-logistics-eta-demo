@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import 'dotenv/config';
+
 
 import { corridors, updateCorridorState } from './services/tdas';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
@@ -452,7 +454,7 @@ app.get('/api/db-test', async (req: any, res: any) => {
     const result = await query('select now() as now');
     res.json({ ok: true, now: result.rows[0].now });
   } catch (err: any) {
-    console.error('DB test error:', err);
+    console.error('DB test error object:', err);   // <— add this
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
