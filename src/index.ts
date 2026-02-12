@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import 'dotenv/config';
 
 
 import { corridors, updateCorridorState } from './services/tdas';
