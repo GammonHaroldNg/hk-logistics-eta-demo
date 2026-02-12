@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
+import { query } from './db';
+
 import { corridors, updateCorridorState } from './services/tdas';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
 import { fetchAdditionalCorridorsFromWFS } from './services/wfsService';
@@ -268,6 +270,31 @@ app.get('/api/routes', (req: any, res: any) => {
   }
 });
 
+// ===== API: DELIVERY TARGETS =====
+
+// List delivery_targets (e.g. next 365 days)
+app.get('/api/delivery-targets', async (req: any, res: any) => {
+  try {
+    const sql = `
+      select
+        operation_date,
+        target_concrete_volume,
+        work_start_time,
+        work_end_time,
+        planned_trucks_per_hour
+      from public.delivery_targets
+      order by operation_date asc
+      limit 365;
+    `;
+    const result = await query(sql);
+    res.json({ ok: true, targets: result.rows });
+  } catch (err: any) {
+    console.error('Error in /api/delivery-targets:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+
 // ===== API: TRAFFIC =====
 
 app.get('/api/traffic', (req: any, res: any) => {
@@ -528,13 +555,14 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
   }
 });
 
-// (optional) list today's trips – handy for debugging / dashboard
+// (optional) list today's trips
 app.get('/api/trips/today', async (req: any, res: any) => {
   try {
     const sql = `
       select *
       from public.trips
-      order by created_at asc
+      where actual_start_at::date = now()::date
+      order by actual_start_at asc
       limit 200;
     `;
     const result = await query(sql);
@@ -545,7 +573,6 @@ app.get('/api/trips/today', async (req: any, res: any) => {
   }
 });
 
-import { query } from './db';
 
 app.get('/api/db-test', async (req: any, res: any) => {
   try {
