@@ -207,8 +207,6 @@ async function updateTrafficData(): Promise<void> {
 
 // ===== PAGE ROUTES =====
 
-// ===== PAGE ROUTES =====
-
 app.get('/', (req: any, res: any) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
@@ -218,9 +216,7 @@ app.get('/tracking', (req: any, res: any) => {
 });
 
 // NEW admin page
-app.get('/admin/trips', (req: any, res: any) => {
-  res.sendFile(path.join(__dirname, '../public/admin-trips.html'));
-});
+app.use(express.static(path.resolve(__dirname, 'public')));
 
 // ===== API: ROUTES =====
 
