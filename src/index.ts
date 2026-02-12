@@ -215,9 +215,8 @@ app.get('/tracking', (req: any, res: any) => {
   res.sendFile(path.join(__dirname, '../public/tracking.html'));
 });
 
-// NEW admin page
-app.get('/admin/trips', (req: any, res: any) => {
-  res.sendFile(path.join(__dirname, '../public/admin-trips.html'));
+app.get('/trips', (req: any, res: any) => {
+  res.sendFile(path.join(__dirname, '../public/trips.html'));
 });
 
 // ===== API: ROUTES =====

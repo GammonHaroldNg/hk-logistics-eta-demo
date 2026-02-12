@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Trip Admin Test</title>
+</head>
+<body>
+  <h1>Trip Admin TEST page</h1>
+
+  <button onclick="alert('Trips test page loaded!')">
+    Click to test
+  </button>
+
+  <pre id="output"></pre>
+
+  <script>
+    async function testApi() {
+      const res = await fetch('/api/trips/today');
+      const data = await res.json();
+      document.getElementById('output').textContent =
+        JSON.stringify(data, null, 2);
+    }
+
+    testApi();
+  </script>
+</body>
+</html>
