@@ -3,68 +3,788 @@
 <head>
   <meta charset="UTF-8" />
   <title>Trip Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --card-bg: #ffffff;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --border: #e5e7eb;
+      --text-main: #111827;
+      --text-muted: #6b7280;
+      --danger: #b91c1c;
+      --success: #15803d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin: 0 0 0.25rem;
+    }
+
+    h2 {
+      font-size: 1.1rem;
+      margin: 0 0 0.5rem;
+    }
+
+    .page-header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .page-header small {
+      color: var(--text-muted);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+      gap: 1rem;
+    }
+
+    @media (max-width: 800px) {
+      .layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      padding: 0.75rem 1rem 0.9rem;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+    }
+
+    .card-header small {
+      color: var(--text-muted);
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      margin-top: 0.4rem;
+      margin-bottom: 0.1rem;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="datetime-local"] {
+      width: 100%;
+      padding: 0.4rem 0.5rem;
+      font-size: 0.85rem;
+      border-radius: 0.3rem;
+      border: 1px solid var(--border);
+      outline: none;
+    }
+
+    input[type="text"]:focus,
+    input[type="datetime-local"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-soft);
+    }
+
+    .field-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      margin-top: 0.35rem;
+    }
+
+    .field-row > div {
+      flex: 1;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.35rem;
+    }
+
+    button {
+      border-radius: 0.3rem;
+      border: none;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .btn-secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+    }
+
+    .btn-primary:disabled,
+    .btn-secondary:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .section-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.1rem 0.4rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 500;
+    }
+
+    .status-pill.in_progress {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .status-pill.completed {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-pill.planned {
+      background: #e0f2fe;
+      color: #1d4ed8;
+    }
+
+    .status-pill.corrected {
+      border: 1px dashed var(--text-muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin-top: 0.4rem;
+    }
+
+    thead {
+      background: #f9fafb;
+    }
+
+    th,
+    td {
+      padding: 0.3rem 0.4rem;
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      font-weight: 600;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f9fafb;
+    }
+
+    tbody tr:hover {
+      background: #eff6ff;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-muted {
+      color: var(--text-muted);
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 0.05rem 0.4rem;
+      border-radius: 999px;
+      background: #e5e7eb;
+      font-size: 0.7rem;
+      color: #374151;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .stack-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-top: 0.4rem;
+    }
+
+    .pill-error {
+      color: var(--danger);
+      font-size: 0.78rem;
+    }
+
+    .pill-success {
+      color: var(--success);
+      font-size: 0.78rem;
+    }
+
+    .small-muted {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    #raw-output {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      white-space: pre-wrap;
+      font-size: 0.7rem;
+      background: #111827;
+      color: #e5e7eb;
+      padding: 0.5rem;
+      border-radius: 0.3rem;
+      max-height: 220px;
+      overflow: auto;
+    }
+  </style>
 </head>
 <body>
-  <h1>Trip Admin</h1>
+  <div class="page-header">
+    <h1>Trip Admin</h1>
+    <small>HK logistics ETA • Supabase trips + delivery targets</small>
+  </div>
 
-  <h2>Start trip</h2>
-  <label>
-    Vehicle ID:
-    <input id="start-vehicle-id" value="TRUCK-001" />
-  </label>
-  <button onclick="startTrip()">Start trip now</button>
+  <div class="layout">
+    <!-- LEFT: forms -->
+    <div class="stack">
+      <div class="card">
+        <div class="card-header">
+          <h2>Start trip</h2>
+          <small class="small-muted">Create in_progress trip row</small>
+        </div>
 
-  <h2>Mark arrived</h2>
-  <label>
-    Trip ID:
-    <input id="arrive-trip-id" />
-  </label>
-  <button onclick="arriveTrip()">Mark as arrived</button>
+        <label for="start-vehicle-id">Vehicle ID</label>
+        <input
+          id="start-vehicle-id"
+          type="text"
+          value="TRUCK-001"
+          autocomplete="off"
+        />
 
-  <h2>Today’s trips</h2>
-  <button onclick="loadTrips()">Refresh</button>
-  <pre id="trips-output"></pre>
+        <div class="field-row">
+          <div>
+            <label for="start-time">Start time (optional)</label>
+            <input id="start-time" type="datetime-local" />
+            <div class="small-muted">
+              Empty = use “now” from server
+            </div>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="start-corrected" />
+          <label for="start-corrected" style="margin: 0;">corrected</label>
+        </div>
+
+        <div class="section-actions">
+          <button id="btn-start-trip" class="btn-primary">Start trip</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Mark arrived</h2>
+          <small class="small-muted">Complete existing trip</small>
+        </div>
+
+        <label for="arrive-trip-id">Trip ID</label>
+        <input
+          id="arrive-trip-id"
+          type="text"
+          placeholder="Paste last trip id here"
+          autocomplete="off"
+        />
+
+        <div class="field-row">
+          <div>
+            <label for="arrive-time">Arrival time (optional)</label>
+            <input id="arrive-time" type="datetime-local" />
+            <div class="small-muted">
+              Empty = use “now” from server
+            </div>
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="arrive-corrected" />
+          <label for="arrive-corrected" style="margin:0;">corrected</label>
+        </div>
+
+        <div class="section-actions">
+          <button id="btn-arrive-trip" class="btn-secondary">
+            Mark arrived
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Debug / raw responses</h2>
+          <button id="btn-clear-output" class="btn-ghost">Clear</button>
+        </div>
+        <div id="raw-output">(API responses will appear here)</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: dashboards -->
+    <div class="stack">
+      <div class="card">
+        <div class="card-header">
+          <h2>Today’s trips</h2>
+          <div class="stack-row">
+            <small class="small-muted" id="trips-meta">
+              Loading…
+            </small>
+            <div>
+              <button id="btn-refresh-trips" class="btn-secondary">
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="small-muted">
+          trips table (in_progress + completed) for today
+        </div>
+
+        <table id="trips-table">
+          <thead>
+            <tr>
+              <th>Vehicle</th>
+              <th>Status</th>
+              <th>Start</th>
+              <th>Arrival</th>
+              <th class="text-right">Duration</th>
+              <th>Corrected</th>
+              <th>ID</th>
+            </tr>
+          </thead>
+          <tbody id="trips-body">
+            <tr>
+              <td colspan="7" class="text-muted">
+                No trips loaded yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Delivery targets</h2>
+          <div class="stack-row">
+            <small class="small-muted" id="targets-meta">
+              Uses delivery_targets table
+            </small>
+            <button id="btn-refresh-targets" class="btn-secondary">
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <div class="small-muted">
+          Planned production per day (operation_date, target volume, hours,
+          trucks/hour).
+        </div>
+
+        <table id="targets-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th class="text-right">Target m³</th>
+              <th>Work window</th>
+              <th class="text-right">Trucks/hr</th>
+            </tr>
+          </thead>
+          <tbody id="targets-body">
+            <tr>
+              <td colspan="4" class="text-muted">
+                No targets loaded yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   <script>
-    async function startTrip() {
-      const vehicleId = document.getElementById('start-vehicle-id').value;
-      const res = await fetch('/api/trips/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vehicleId })
+    const startVehicleInput = document.getElementById('start-vehicle-id');
+    const startTimeInput = document.getElementById('start-time');
+    const startCorrectedInput = document.getElementById('start-corrected');
+    const arriveTripIdInput = document.getElementById('arrive-trip-id');
+    const arriveTimeInput = document.getElementById('arrive-time');
+    const arriveCorrectedInput = document.getElementById('arrive-corrected');
+
+    const rawOutputEl = document.getElementById('raw-output');
+    const tripsBodyEl = document.getElementById('trips-body');
+    const tripsMetaEl = document.getElementById('trips-meta');
+    const targetsBodyEl = document.getElementById('targets-body');
+    const targetsMetaEl = document.getElementById('targets-meta');
+
+    function logRaw(label, data) {
+      const ts = new Date().toLocaleTimeString();
+      const text =
+        '[' +
+        ts +
+        '] ' +
+        label +
+        ':\n' +
+        JSON.stringify(data, null, 2) +
+        '\n\n' +
+        rawOutputEl.textContent;
+      rawOutputEl.textContent = text;
+    }
+
+    function fmtDateTime(value) {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return (
+        d.toLocaleDateString('en-HK', {
+          month: 'short',
+          day: '2-digit'
+        }) +
+        ' ' +
+        d.toLocaleTimeString('en-HK', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      );
+    }
+
+    function fmtDate(value) {
+      if (!value) return '';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleDateString('en-HK', {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit'
       });
-      const data = await res.json();
-      alert('Start response: ' + JSON.stringify(data));
-      if (data.ok && data.trip && data.trip.id) {
-        document.getElementById('arrive-trip-id').value = data.trip.id;
+    }
+
+    function fmtDurationMinutes(start, end) {
+      if (!start || !end) return '';
+      const s = new Date(start).getTime();
+      const e = new Date(end).getTime();
+      if (Number.isNaN(s) || Number.isNaN(e) || e < s) return '';
+      const minutes = Math.round((e - s) / 60000);
+      if (minutes < 60) return minutes + ' min';
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return m ? h + 'h ' + m + 'm' : h + 'h';
+    }
+
+    function renderTrips(data) {
+      const trips = (data && data.trips) || [];
+      tripsBodyEl.innerHTML = '';
+
+      if (!trips.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 7;
+        cell.className = 'text-muted';
+        cell.textContent = 'No trips for today.';
+        row.appendChild(cell);
+        tripsBodyEl.appendChild(row);
+      } else {
+        trips.forEach((t) => {
+          const tr = document.createElement('tr');
+
+          const tdVehicle = document.createElement('td');
+          tdVehicle.textContent = t.vehicle_id || '';
+          tr.appendChild(tdVehicle);
+
+          const tdStatus = document.createElement('td');
+          const pill = document.createElement('span');
+          pill.className =
+            'status-pill ' + (t.status || '').toLowerCase().trim();
+          pill.textContent = (t.status || '').replace('_', ' ');
+          tdStatus.appendChild(pill);
+          tr.appendChild(tdStatus);
+
+          const tdStart = document.createElement('td');
+          tdStart.textContent = fmtDateTime(t.actual_start_at);
+          tr.appendChild(tdStart);
+
+          const tdArrival = document.createElement('td');
+          tdArrival.textContent = fmtDateTime(t.actual_arrival_at);
+          tr.appendChild(tdArrival);
+
+          const tdDuration = document.createElement('td');
+          tdDuration.className = 'text-right';
+          tdDuration.textContent = fmtDurationMinutes(
+            t.actual_start_at,
+            t.actual_arrival_at
+          );
+          tr.appendChild(tdDuration);
+
+          const tdCorrected = document.createElement('td');
+          if (t.corrected) {
+            const correctedTag = document.createElement('span');
+            correctedTag.className = 'tag';
+            correctedTag.textContent = 'corrected';
+            tdCorrected.appendChild(correctedTag);
+          } else {
+            tdCorrected.className = 'text-muted';
+            tdCorrected.textContent = '-';
+          }
+          tr.appendChild(tdCorrected);
+
+          const tdId = document.createElement('td');
+          tdId.textContent = t.id || '';
+          tr.appendChild(tdId);
+
+          tr.addEventListener('click', () => {
+            arriveTripIdInput.value = t.id || '';
+          });
+
+          tripsBodyEl.appendChild(tr);
+        });
       }
-      loadTrips();
+
+      const count = trips.length;
+      tripsMetaEl.textContent = count
+        ? count + ' trip' + (count > 1 ? 's' : '') + ' loaded'
+        : '0 trips loaded';
+    }
+
+    function renderTargets(data) {
+      const targets = (data && data.targets) || [];
+      targetsBodyEl.innerHTML = '';
+
+      if (!targets.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.className = 'text-muted';
+        cell.textContent = 'No delivery targets loaded.';
+        row.appendChild(cell);
+        targetsBodyEl.appendChild(row);
+      } else {
+        targets.forEach((t) => {
+          const tr = document.createElement('tr');
+
+          const tdDate = document.createElement('td');
+          tdDate.textContent = fmtDate(t.operation_date);
+          tr.appendChild(tdDate);
+
+          const tdVol = document.createElement('td');
+          tdVol.className = 'text-right';
+          tdVol.textContent =
+            t.target_concrete_volume != null
+              ? Number(t.target_concrete_volume).toLocaleString('en-HK', {
+                  minimumFractionDigits: 0,
+                  maximumFractionDigits: 1
+                }) + ' m³'
+              : '';
+          tr.appendChild(tdVol);
+
+          const tdWindow = document.createElement('td');
+          const start = t.work_start_time || '';
+          const end = t.work_end_time || '';
+          tdWindow.textContent = start && end ? start + ' – ' + end : '';
+          tr.appendChild(tdWindow);
+
+          const tdTrucks = document.createElement('td');
+          tdTrucks.className = 'text-right';
+          tdTrucks.textContent =
+            t.planned_trucks_per_hour != null
+              ? String(t.planned_trucks_per_hour)
+              : '';
+          tr.appendChild(tdTrucks);
+
+          targetsBodyEl.appendChild(tr);
+        });
+      }
+
+      const count = targets.length;
+      targetsMetaEl.textContent = count
+        ? count + ' target day' + (count > 1 ? 's' : '') + ' loaded'
+        : '0 target days loaded';
+    }
+
+    async function startTrip() {
+      const vehicleId = startVehicleInput.value.trim();
+      if (!vehicleId) {
+        alert('Vehicle ID is required');
+        return;
+      }
+
+      const btn = document.getElementById('btn-start-trip');
+      btn.disabled = true;
+
+      const body = { vehicleId, corrected: startCorrectedInput.checked };
+      const startVal = startTimeInput.value;
+      if (startVal) {
+        const dt = new Date(startVal);
+        body.actualStartAt = dt.toISOString();
+      }
+
+      try {
+        const res = await fetch('/api/trips/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        logRaw('Start trip', data);
+
+        if (!res.ok || !data.ok) {
+          alert('Start failed');
+        } else {
+          if (data.trip && data.trip.id) {
+            arriveTripIdInput.value = data.trip.id;
+          }
+          await loadTrips();
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Network error starting trip');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function arriveTrip() {
-      const tripId = document.getElementById('arrive-trip-id').value.trim();
+      const tripId = arriveTripIdInput.value.trim();
       if (!tripId) {
         alert('Please enter a trip id');
         return;
       }
-      const res = await fetch('/api/trips/' + tripId + '/arrive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      const data = await res.json();
-      alert('Arrive response: ' + JSON.stringify(data));
-      loadTrips();
+
+      const btn = document.getElementById('btn-arrive-trip');
+      btn.disabled = true;
+
+      const body = { corrected: arriveCorrectedInput.checked };
+      const arriveVal = arriveTimeInput.value;
+      if (arriveVal) {
+        const dt = new Date(arriveVal);
+        body.actualArrivalAt = dt.toISOString();
+      }
+
+      try {
+        const res = await fetch('/api/trips/' + encodeURIComponent(tripId) + '/arrive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        logRaw('Arrive trip', data);
+
+        if (!res.ok || !data.ok) {
+          alert('Arrive failed');
+        } else {
+          await loadTrips();
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Network error marking arrival');
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     async function loadTrips() {
-      const res = await fetch('/api/trips/today');
-      const data = await res.json();
-      document.getElementById('trips-output').textContent =
-        JSON.stringify(data, null, 2);
+      tripsMetaEl.textContent = 'Loading…';
+      try {
+        const res = await fetch('/api/trips/today');
+        const data = await res.json();
+        logRaw('List today trips', data);
+        renderTrips(data);
+      } catch (err) {
+        console.error(err);
+        tripsMetaEl.textContent = 'Error loading trips';
+      }
     }
 
+    // NOTE: you need a backend route that returns delivery_targets in this shape:
+    // { ok: true, targets: [{ operation_date, target_concrete_volume, work_start_time, work_end_time, planned_trucks_per_hour }, ...] }
+    async function loadTargets() {
+      targetsMetaEl.textContent = 'Loading…';
+      try {
+        const res = await fetch('/api/delivery-targets');
+        const data = await res.json();
+        logRaw('List delivery targets', data);
+        renderTargets(data);
+      } catch (err) {
+        console.error(err);
+        targetsMetaEl.textContent = 'Error loading targets';
+      }
+    }
+
+    document
+      .getElementById('btn-start-trip')
+      .addEventListener('click', startTrip);
+    document
+      .getElementById('btn-arrive-trip')
+      .addEventListener('click', arriveTrip);
+    document
+      .getElementById('btn-refresh-trips')
+      .addEventListener('click', loadTrips);
+    document
+      .getElementById('btn-refresh-targets')
+      .addEventListener('click', loadTargets);
+    document
+      .getElementById('btn-clear-output')
+      .addEventListener('click', () => {
+        rawOutputEl.textContent = '';
+      });
+
     loadTrips();
+    loadTargets();
   </script>
 </body>
 </html>
