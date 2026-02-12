@@ -445,6 +445,19 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
   }
 });
 
+import { query } from './db';
+
+app.get('/api/db-test', async (req: any, res: any) => {
+  try {
+    const result = await query('select now() as now');
+    res.json({ ok: true, now: result.rows[0].now });
+  } catch (err: any) {
+    console.error('DB test error:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+
 // ===== START SERVER =====
 
 if (process.env.VERCEL !== 'true') {
