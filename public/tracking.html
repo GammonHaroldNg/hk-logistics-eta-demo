@@ -1,42 +1,70 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HK Logistics - Vehicle Tracking</title>
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css">
-  <link rel="stylesheet" href="css/common.css">
-  <link rel="stylesheet" href="css/tracking.css">
+  <meta charset="UTF-8" />
+  <title>Trip Admin</title>
 </head>
 <body>
-  <div class="container">
-    <header class="header">
-      <h1>Vehicle Tracking</h1>
-      <nav class="nav">
-        <select id="routeSelect" class="select">
-          <option value="">Select Route...</option>
-        </select>
-        <button id="refreshBtn" class="btn btn-primary">Refresh</button>
-        <a href="index.html" class="btn btn-secondary">Back to Overview</a>
-      </nav>
-    </header>
+  <h1>Trip Admin</h1>
 
-    <main>
-      <div id="map" class="map"></div>
-      <div class="tracking-panel">
-        <div class="vehicle-list">
-          <h2>Vehicles on Route</h2>
-          <div id="vehicleList" class="vehicle-list-content"></div>
-        </div>
-        <div class="eta-info">
-          <h2>Route Info</h2>
-          <div id="routeInfo" class="route-info-content"></div>
-        </div>
-      </div>
-    </main>
-  </div>
+  <h2>Start trip</h2>
+  <label>
+    Vehicle ID:
+    <input id="start-vehicle-id" value="TRUCK-001" />
+  </label>
+  <button onclick="startTrip()">Start trip now</button>
 
-  <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
-  <script type="module" src="js/tracking.js"></script>
+  <h2>Mark arrived</h2>
+  <label>
+    Trip ID:
+    <input id="arrive-trip-id" />
+  </label>
+  <button onclick="arriveTrip()">Mark as arrived</button>
+
+  <h2>Today’s trips</h2>
+  <button onclick="loadTrips()">Refresh</button>
+  <pre id="trips-output"></pre>
+
+  <script>
+    async function startTrip() {
+      const vehicleId = document.getElementById('start-vehicle-id').value;
+      const res = await fetch('/api/trips/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vehicleId })
+      });
+      const data = await res.json();
+      alert('Start response: ' + JSON.stringify(data));
+      if (data.ok && data.trip && data.trip.id) {
+        document.getElementById('arrive-trip-id').value = data.trip.id;
+      }
+      loadTrips();
+    }
+
+    async function arriveTrip() {
+      const tripId = document.getElementById('arrive-trip-id').value.trim();
+      if (!tripId) {
+        alert('Please enter a trip id');
+        return;
+      }
+      const res = await fetch('/api/trips/' + tripId + '/arrive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      alert('Arrive response: ' + JSON.stringify(data));
+      loadTrips();
+    }
+
+    async function loadTrips() {
+      const res = await fetch('/api/trips/today');
+      const data = await res.json();
+      document.getElementById('trips-output').textContent =
+        JSON.stringify(data, null, 2);
+    }
+
+    loadTrips();
+  </script>
 </body>
 </html>
