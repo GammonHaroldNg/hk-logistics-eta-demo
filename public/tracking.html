@@ -381,18 +381,31 @@
     <div class="stack">
       <div class="card">
         <div class="card-header">
-          <h2>Today’s trips</h2>
+          <h2>Trips</h2>
           <div class="stack-row">
-            <small class="small-muted" id="trips-meta">
-              Loading…
-            </small>
-            <div>
+            <div class="small-muted">
+              <label for="trips-date" class="small-muted">Date</label>
+              <input id="trips-date" type="date" style="font-size:0.75rem; padding:0.15rem 0.25rem;" />
+              <button id="btn-trips-today" class="btn-ghost" style="font-size:0.75rem;">Today</button>
+            </div>
+            <div class="small-muted">
+              <label class="small-muted">Hour window</label>
+              <select id="trips-hour-from" style="font-size:0.75rem;">
+                <option value="">From (any)</option>
+              </select>
+              <select id="trips-hour-to" style="font-size:0.75rem;">
+                <option value="">To (any)</option>
+              </select>
               <button id="btn-refresh-trips" class="btn-secondary">
-                Refresh
+                Apply
               </button>
             </div>
           </div>
         </div>
+        <small class="small-muted" id="trips-meta">
+          Loading…
+        </small>
+
 
         <div class="small-muted">
           trips table (in_progress + completed) for today
@@ -424,14 +437,20 @@
         <div class="card-header">
           <h2>Delivery targets</h2>
           <div class="stack-row">
-            <small class="small-muted" id="targets-meta">
-              Uses delivery_targets table
-            </small>
+            <div class="small-muted">
+              <label for="targets-date" class="small-muted">Date</label>
+              <input id="targets-date" type="date" style="font-size:0.75rem; padding:0.15rem 0.25rem;" />
+              <button id="btn-targets-today" class="btn-ghost" style="font-size:0.75rem;">Today</button>
+            </div>
             <button id="btn-refresh-targets" class="btn-secondary">
               Refresh
             </button>
           </div>
         </div>
+        <small class="small-muted" id="targets-meta">
+          Uses delivery_targets table
+        </small>
+
 
         <div class="small-muted">
           Planned production per day (operation_date, target volume, hours,
@@ -472,6 +491,42 @@
     const tripsMetaEl = document.getElementById('trips-meta');
     const targetsBodyEl = document.getElementById('targets-body');
     const targetsMetaEl = document.getElementById('targets-meta');
+
+    const tripsDateInput = document.getElementById('trips-date');
+    const tripsHourFromSelect = document.getElementById('trips-hour-from');
+    const tripsHourToSelect = document.getElementById('trips-hour-to');
+
+    const targetsDateInput = document.getElementById('targets-date');
+
+    function toInputDateHK(d = new Date()) {
+      // Convert now to HK local date, then format YYYY-MM-DD for input[type=date]
+      const hk = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' }));
+      const year = hk.getFullYear();
+      const month = String(hk.getMonth() + 1).padStart(2, '0');
+      const day = String(hk.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function initHourSelect(selectEl) {
+      // Adds 0-23
+      for (let h = 0; h < 24; h++) {
+        const opt = document.createElement('option');
+        opt.value = String(h);
+        opt.textContent = h.toString().padStart(2, '0') + ':00';
+        selectEl.appendChild(opt);
+      }
+    }
+
+    // init defaults
+    if (tripsDateInput) {
+      tripsDateInput.value = toInputDateHK();
+    }
+    if (targetsDateInput) {
+      targetsDateInput.value = toInputDateHK();
+    }
+    initHourSelect(tripsHourFromSelect);
+    initHourSelect(tripsHourToSelect);
+
 
     function logRaw(label, data) {
       const ts = new Date().toLocaleTimeString();
@@ -739,10 +794,23 @@
 
     async function loadTrips() {
       tripsMetaEl.textContent = 'Loading…';
+
+      const params = new URLSearchParams();
+
+      if (tripsDateInput && tripsDateInput.value) {
+        params.set('date', tripsDateInput.value); // YYYY-MM-DD
+      }
+      const hourFromVal = tripsHourFromSelect.value;
+      const hourToVal = tripsHourToSelect.value;
+      if (hourFromVal !== '') params.set('hourFrom', hourFromVal);
+      if (hourToVal !== '') params.set('hourTo', hourToVal);
+
+      const url = '/api/trips/today' + (params.toString() ? `?${params.toString()}` : '');
+
       try {
-        const res = await fetch('/api/trips/today');
+        const res = await fetch(url);
         const data = await res.json();
-        logRaw('List today trips', data);
+        logRaw('List trips', data);
         renderTrips(data);
       } catch (err) {
         console.error(err);
@@ -750,12 +818,21 @@
       }
     }
 
+
     // NOTE: you need a backend route that returns delivery_targets in this shape:
     // { ok: true, targets: [{ operation_date, target_concrete_volume, work_start_time, work_end_time, planned_trucks_per_hour }, ...] }
     async function loadTargets() {
       targetsMetaEl.textContent = 'Loading…';
+
+      const params = new URLSearchParams();
+      if (targetsDateInput && targetsDateInput.value) {
+        params.set('date', targetsDateInput.value);
+      }
+
+      const url = '/api/delivery-targets' + (params.toString() ? `?${params.toString()}` : '');
+
       try {
-        const res = await fetch('/api/delivery-targets');
+        const res = await fetch(url);
         const data = await res.json();
         logRaw('List delivery targets', data);
         renderTargets(data);
@@ -765,23 +842,31 @@
       }
     }
 
-    document
-      .getElementById('btn-start-trip')
-      .addEventListener('click', startTrip);
-    document
-      .getElementById('btn-arrive-trip')
-      .addEventListener('click', arriveTrip);
+
     document
       .getElementById('btn-refresh-trips')
       .addEventListener('click', loadTrips);
+
+    document
+      .getElementById('btn-trips-today')
+      .addEventListener('click', () => {
+        tripsDateInput.value = toInputDateHK();
+        tripsHourFromSelect.value = '';
+        tripsHourToSelect.value = '';
+        loadTrips();
+      });
+
     document
       .getElementById('btn-refresh-targets')
       .addEventListener('click', loadTargets);
+
     document
-      .getElementById('btn-clear-output')
+      .getElementById('btn-targets-today')
       .addEventListener('click', () => {
-        rawOutputEl.textContent = '';
+        targetsDateInput.value = toInputDateHK();
+        loadTargets();
       });
+
 
     loadTrips();
     loadTargets();

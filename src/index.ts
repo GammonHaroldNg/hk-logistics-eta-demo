@@ -558,20 +558,53 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
 // (optional) list today's trips
 app.get('/api/trips/today', async (req: any, res: any) => {
   try {
+    const { date, hourFrom, hourTo } = req.query;
+
+    // Base: filter by Hong Kong local date
+    // If `date` not provided → use current_date in HK
     const sql = `
-      select *
-      from public.trips
-      where actual_start_at::date = now()::date
-      order by actual_start_at asc
+      with params as (
+        select
+          -- requested date in HK, or "today in HK" if null
+          coalesce(
+            $1::date,
+            (now() at time zone 'Asia/Hong_Kong')::date
+          ) as hk_date,
+          $2::int as hour_from,
+          $3::int as hour_to
+      )
+      select t.*
+      from public.trips t
+      cross join params
+      where
+        -- match selected HK date
+        (t.actual_start_at at time zone 'Asia/Hong_Kong')::date = params.hk_date
+        -- optional hour window in HK local time
+        and (
+          params.hour_from is null
+          or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) >= params.hour_from
+        )
+        and (
+          params.hour_to is null
+          or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) < params.hour_to
+        )
+      order by t.actual_start_at asc
       limit 200;
     `;
-    const result = await query(sql);
+
+    const result = await query(sql, [
+      date || null,          // $1 e.g. "2026-02-13"
+      hourFrom ?? null,      // $2 integer 0–23
+      hourTo ?? null         // $3 integer 1–24
+    ]);
+
     res.json({ ok: true, trips: result.rows });
   } catch (err: any) {
     console.error('Error in /api/trips/today:', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 app.get('/api/db-test', async (req: any, res: any) => {
