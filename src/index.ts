@@ -271,22 +271,32 @@ app.get('/api/routes', (req: any, res: any) => {
 });
 
 // ===== API: DELIVERY TARGETS =====
-
-// List delivery_targets (e.g. next 365 days)
 app.get('/api/delivery-targets', async (req: any, res: any) => {
   try {
+    const { date } = req.query;
+
     const sql = `
+      with params as (
+        select
+          coalesce(
+            $1::date,
+            (now() at time zone 'Asia/Hong_Kong')::date
+          ) as hk_date
+      )
       select
         operation_date,
         target_concrete_volume,
-        work_start_hour,
-        work_end_hour,
+        work_start_time,
+        work_end_time,
         planned_trucks_per_hour
       from public.delivery_targets
+      cross join params
+      where operation_date = params.hk_date
       order by operation_date asc
       limit 365;
     `;
-    const result = await query(sql);
+
+    const result = await query(sql, [date || null]);
     res.json({ ok: true, targets: result.rows });
   } catch (err: any) {
     console.error('Error in /api/delivery-targets:', err);
@@ -555,17 +565,14 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
   }
 });
 
-// (optional) list today's trips
+// ===== API: TRIPS TODAY (with HK date & hour filters) =====
 app.get('/api/trips/today', async (req: any, res: any) => {
   try {
     const { date, hourFrom, hourTo } = req.query;
 
-    // Base: filter by Hong Kong local date
-    // If `date` not provided → use current_date in HK
     const sql = `
       with params as (
         select
-          -- requested date in HK, or "today in HK" if null
           coalesce(
             $1::date,
             (now() at time zone 'Asia/Hong_Kong')::date
@@ -577,13 +584,14 @@ app.get('/api/trips/today', async (req: any, res: any) => {
       from public.trips t
       cross join params
       where
-        -- match selected HK date
+        -- Hong Kong local date of actual_start_at must match selected date
         (t.actual_start_at at time zone 'Asia/Hong_Kong')::date = params.hk_date
-        -- optional hour window in HK local time
+        -- Optional lower bound on hour
         and (
           params.hour_from is null
           or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) >= params.hour_from
         )
+        -- Optional upper bound on hour (exclusive)
         and (
           params.hour_to is null
           or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) < params.hour_to
@@ -593,9 +601,9 @@ app.get('/api/trips/today', async (req: any, res: any) => {
     `;
 
     const result = await query(sql, [
-      date || null,          // $1 e.g. "2026-02-13"
-      hourFrom ?? null,      // $2 integer 0–23
-      hourTo ?? null         // $3 integer 1–24
+      date || null,          // $1: 'YYYY-MM-DD' or null
+      hourFrom ?? null,      // $2: '0'..'23' or null
+      hourTo ?? null         // $3: '1'..'24' or null
     ]);
 
     res.json({ ok: true, trips: result.rows });
@@ -604,6 +612,7 @@ app.get('/api/trips/today', async (req: any, res: any) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 
