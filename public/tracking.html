@@ -843,6 +843,13 @@
       }
     }
 
+    document
+      .getElementById('btn-start-trip')
+      .addEventListener('click', startTrip);
+
+    document
+      .getElementById('btn-arrive-trip')
+      .addEventListener('click', arriveTrip);
 
     document
       .getElementById('btn-refresh-trips')
@@ -867,7 +874,6 @@
         targetsDateInput.value = toInputDateHK();
         loadTargets();
       });
-
 
     loadTrips();
     loadTargets();
