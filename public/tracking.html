@@ -907,8 +907,8 @@
     document
       .getElementById('btn-targets-reset')
       .addEventListener('click', () => {
-        targetsDateInput.value = toInputDateHK(); // default = HK today
-        loadTargets();
+        targetsDateInput.value = '';  // no date selected
+        loadTargets();                // sends request without ?date=
       });
 
     document

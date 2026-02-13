@@ -278,20 +278,21 @@ app.get('/api/delivery-targets', async (req: any, res: any) => {
     const sql = `
       with params as (
         select
-          coalesce(
-            $1::date,
-            (now() at time zone 'Asia/Hong_Kong')::date
-          ) as hk_date
+          $1::date as hk_date
       )
       select
         operation_date,
         target_concrete_volume,
-        work_start_hour,
-        work_end_hour,
+        work_start_time,
+        work_end_time,
         planned_trucks_per_hour
       from public.delivery_targets
       cross join params
-      where operation_date = params.hk_date
+      where (
+        -- if hk_date is null => no filtering (show all)
+        params.hk_date is null
+        or operation_date = params.hk_date
+      )
       order by operation_date asc
       limit 365;
     `;
@@ -303,6 +304,7 @@ app.get('/api/delivery-targets', async (req: any, res: any) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 // ===== API: TRAFFIC =====
