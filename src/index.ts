@@ -279,8 +279,8 @@ app.get('/api/delivery-targets', async (req: any, res: any) => {
       select
         operation_date,
         target_concrete_volume,
-        work_start_time,
-        work_end_time,
+        work_start_hour,
+        work_end_hour,
         planned_trucks_per_hour
       from public.delivery_targets
       order by operation_date asc
