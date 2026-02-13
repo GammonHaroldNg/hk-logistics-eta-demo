@@ -591,7 +591,7 @@
       if (!trips.length) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 7;               // ← you’ll change this to 8
+        cell.colSpan = 8;               // ← you’ll change this to 8
         cell.className = 'text-muted';
         cell.textContent = 'No trips for today.';
         row.appendChild(cell);
@@ -647,6 +647,25 @@
           tr.addEventListener('click', () => {
             arriveTripIdInput.value = t.id || '';
           });
+
+          // Action cell: Mark arrived
+          const tdAction = document.createElement('td');
+          if (t.status === 'in_progress') {
+            const btn = document.createElement('button');
+            btn.textContent = 'Mark arrived';
+            btn.className = 'btn-secondary';
+            btn.addEventListener('click', async (event) => {
+              event.stopPropagation(); // don't trigger the row click
+              arriveTripIdInput.value = t.id || '';
+              await arriveTrip();
+            });
+            tdAction.appendChild(btn);
+          } else {
+            tdAction.className = 'text-muted';
+            tdAction.textContent = '-';
+          }
+          tr.appendChild(tdAction);
+
 
           tripsBodyEl.appendChild(tr);
         });
