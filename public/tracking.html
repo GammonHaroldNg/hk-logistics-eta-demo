@@ -251,14 +251,16 @@
       gap: 0.5rem;
     }
 
-    .stack-row {
+    .stack-row > div {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-top: 0.4rem;
+      gap: 0.4rem;
     }
+
+    .stack-row label {
+      margin: 0;
+    }
+
 
     .pill-error {
       color: var(--danger);
@@ -393,6 +395,9 @@
             <button id="btn-refresh-targets" class="btn-secondary">
               Refresh
             </button>
+            <button id="btn-targets-reset" class="btn-ghost">
+              Reset
+            </button>
           </div>
         </div>
         <small class="small-muted" id="targets-meta">
@@ -442,6 +447,9 @@
               </select>
               <button id="btn-refresh-trips" class="btn-secondary">
                 Apply
+              </button>
+              <button id="btn-trips-reset" class="btn-ghost">
+                Reset
               </button>
             </div>
           </div>
@@ -895,6 +903,23 @@
         targetsDateInput.value = toInputDateHK();
         loadTargets();
       });
+
+    document
+      .getElementById('btn-targets-reset')
+      .addEventListener('click', () => {
+        targetsDateInput.value = toInputDateHK(); // default = HK today
+        loadTargets();
+      });
+
+    document
+      .getElementById('btn-trips-reset')
+      .addEventListener('click', () => {
+        tripsDateInput.value = toInputDateHK(); // HK today
+        tripsHourFromSelect.value = '';
+        tripsHourToSelect.value = '';
+        loadTrips();
+      });
+
 
     loadTrips();
     loadTargets();
