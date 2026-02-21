@@ -247,6 +247,11 @@
 
         setInterval(loadTrafficData, 60000);
 
+        if (!deliveryInterval) {
+          pollDeliveryStatus();
+          deliveryInterval = setInterval(pollDeliveryStatus, 3000);
+        }
+
         document.getElementById('projectBtn').onclick = () => {
           zoomToProjectRoutes();
         };
