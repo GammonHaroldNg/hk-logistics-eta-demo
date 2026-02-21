@@ -486,23 +486,21 @@ app.post('/api/delivery/reset', (req: any, res: any) => {
 
 // ===== API: TRUCKS =====
 
-app.get('/api/trucks/:routeId', (req: any, res: any) => {
+app.get('/api/trucks/:routeId', (req, res) => {
   try {
-    const routeId = Number(req.params.routeId);
-    const trucks = getTrucks().filter((t: any) => t.routeId === routeId);
-
+    const trucks = getTrucks(); // no filter
     res.json({
-      routeId: routeId,
-      trucks: trucks.map((t: any) => ({
+      routeId: Number(req.params.routeId),
+      trucks: trucks.map(t => ({
         truckId: t.truckId,
         status: t.status,
         position: t.currentPosition,
         progress: (t.progressRatio * 100).toFixed(1),
         estimatedArrival: t.estimatedArrival.toISOString(),
-        elapsedSeconds: t.elapsedSeconds
+        elapsedSeconds: t.elapsedSeconds,
       })),
       count: trucks.length,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error('Error in /api/trucks:', error);
