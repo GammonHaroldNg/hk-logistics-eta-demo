@@ -235,24 +235,28 @@ async function updateTrafficData(): Promise<void> {
 
     // 2) Hydrate trucks from today’s in_progress trips
     try {
-      const sql = `
-        select
-          id,
-          vehicle_id,
-          actual_start_at,
-          actual_arrival_at,
-          status,
-          corrected
-        from public.trips
-        where status = 'in_progress'
-          and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
-              (now() at time zone 'Asia/Hong_Kong')::date
-        order by actual_start_at asc
-      `;
-      const result = await query(sql);
-      const rows = result.rows as DbTrip[];
-      await hydrateFromTrips(rows, 40);
-      console.log('Hydrated trucks from trips:', rows.length);
+      if (!process.env.DATABASE_URL) {
+        console.warn('No DATABASE_URL set; skipping hydrateFromTrips');
+      } else {
+        const sql = `
+          select
+            id,
+            vehicle_id,
+            actual_start_at,
+            actual_arrival_at,
+            status,
+            corrected
+          from public.trips
+          where status = 'in_progress'
+            and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+                (now() at time zone 'Asia/Hong_Kong')::date
+          order by actual_start_at asc
+        `;
+        const result = await query(sql);
+        const rows = result.rows as DbTrip[];
+        await hydrateFromTrips(rows, 40);
+        console.log('Hydrated trucks from trips:', rows.length);
+      }
     } catch (e) {
       console.error('Failed to hydrate trucks from trips', e);
     }
@@ -262,6 +266,7 @@ async function updateTrafficData(): Promise<void> {
     console.error('Failed to initialize app:', err);
   }
 })();
+
 
 
 // ===== PAGE ROUTES =====
