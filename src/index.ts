@@ -174,6 +174,33 @@ async function updateTrafficData(): Promise<void> {
 
     await updateTrafficData();
 
+    // 1) Auto‑init delivery session so routeGeometry + config exist
+    const stitched = stitchProjectRoutes();
+    if (stitched && stitched.coordinates.length > 0) {
+      const mergedGeometry = {
+        type: 'LineString' as const,
+        coordinates: stitched.coordinates,
+      };
+
+      startDeliverySession(
+        {
+          routeId: 0,          // or your main project route id
+          targetVolume: 600,   // defaults, just for stats
+          volumePerTruck: 8,
+          trucksPerHour: 12,
+          startTime: new Date(),
+          defaultSpeed: 40,
+        },
+        mergedGeometry,
+        stitched.segmentCount,
+      );
+
+      console.log('Auto delivery session initialized at startup');
+    } else {
+      console.warn('No project route geometry found for auto init');
+    }
+
+    // existing WFS enrichment
     fetchAdditionalCorridorsFromWFS()
       .then(async () => {
         console.log('WFS enrichment finished');
@@ -183,7 +210,10 @@ async function updateTrafficData(): Promise<void> {
           tdasRouteIds.add(Number(routeIdStr));
         }
         buildFilteredCorridors(tdasRouteIds);
-        console.log('Filtered corridors rebuilt after WFS:', Object.keys(getFilteredCorridors()).length);
+        console.log(
+          'Filtered corridors rebuilt after WFS:',
+          Object.keys(getFilteredCorridors()).length,
+        );
       })
       .catch((err: any) => {
         console.error('WFS enrichment failed:', err);
@@ -203,6 +233,7 @@ async function updateTrafficData(): Promise<void> {
       }
     }, 1000);
 
+    // 2) Hydrate trucks from today’s in_progress trips
     try {
       const sql = `
         select
@@ -226,13 +257,12 @@ async function updateTrafficData(): Promise<void> {
       console.error('Failed to hydrate trucks from trips', e);
     }
 
-
-
     console.log('Server initialized, delivery tick running');
   } catch (err) {
     console.error('Failed to initialize app:', err);
   }
 })();
+
 
 // ===== PAGE ROUTES =====
 
