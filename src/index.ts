@@ -205,13 +205,18 @@ async function updateTrafficData(): Promise<void> {
 
     try {
       const sql = `
-        select id, vehicleid as vehicle_id, actualstartat as actual_start_at,
-              actualarrivalat as actual_arrival_at, status, corrected
+        select
+          id,
+          vehicle_id,
+          actual_start_at,
+          actual_arrival_at,
+          status,
+          corrected
         from public.trips
-        where status = 'inprogress'
-          and (actualstartat at time zone 'Asia/Hong_Kong')::date =
+        where status = 'in_progress'
+          and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
               (now() at time zone 'Asia/Hong_Kong')::date
-        order by actualstartat asc
+        order by actual_start_at asc
       `;
       const result = await query(sql);
       const rows = result.rows as DbTrip[];
