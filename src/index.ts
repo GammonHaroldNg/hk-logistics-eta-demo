@@ -523,8 +523,8 @@ app.post('/api/trips/start', async (req: any, res: any) => {
     const startTime = actualStartAt ? new Date(actualStartAt) : new Date();
 
     const sql = `
-      insert into public.trips (vehicleid, actualstartat, status, corrected)
-      values ($1, $2, 'inprogress', coalesce($3, false))
+      insert into public.trips (vehicle_id, actual_start_at, status, corrected)
+      values ($1, $2, 'in_progress', coalesce($3, false))
       returning *
     `;
     const result = await query(sql, [vehicleId, startTime.toISOString(), corrected]);
@@ -540,9 +540,9 @@ app.post('/api/trips/start', async (req: any, res: any) => {
         addTruckFromTrip(
           {
             id: trip.id,
-            vehicle_id: trip.vehicleid,
-            actual_start_at: trip.actualstartat,
-            actual_arrival_at: trip.actualarrivalat,
+            vehicle_id: trip.vehicle_id,
+            actual_start_at: trip.actual_start_at,
+            actual_arrival_at: trip.actual_arrival_at,
             status: trip.status,
             corrected: trip.corrected,
           },
@@ -576,10 +576,10 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
 
     const sql = `
       update public.trips
-      set actualarrivalat = $1,
+      set actual_arrival_at = $1,
           status = 'completed',
           corrected = coalesce($2, corrected),
-          updatedat = now()
+          updated_at = now()
       where id = $3
       returning *
     `;
