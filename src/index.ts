@@ -20,7 +20,9 @@ import {
   startDeliverySession, tickDelivery, getDeliveryStatus,
   stopDelivery, resetDelivery, isDeliveryRunning,
   getTrucks, getTotalConcreteDelivered, getActiveCount,
-  getCompletedCount, getDeliveryRecords
+  getCompletedCount, getDeliveryRecords, 
+  hydrateFromTrips,  addTruckFromTrip,  completeTruckFromDb,
+  DbTrip,
 } from './services/truckService';
 
 const app = express();
@@ -200,6 +202,26 @@ async function updateTrafficData(): Promise<void> {
         tickDelivery(1);
       }
     }, 1000);
+
+    try {
+      const sql = `
+        select id, vehicleid as vehicle_id, actualstartat as actual_start_at,
+              actualarrivalat as actual_arrival_at, status, corrected
+        from public.trips
+        where status = 'inprogress'
+          and (actualstartat at time zone 'Asia/Hong_Kong')::date =
+              (now() at time zone 'Asia/Hong_Kong')::date
+        order by actualstartat asc
+      `;
+      const result = await query(sql);
+      const rows = result.rows as DbTrip[];
+      await hydrateFromTrips(rows, 40);
+      console.log('Hydrated trucks from trips:', rows.length);
+    } catch (e) {
+      console.error('Failed to hydrate trucks from trips', e);
+    }
+
+
 
     console.log('Server initialized, delivery tick running');
   } catch (err) {
@@ -493,79 +515,96 @@ app.get('/api/trucks/:routeId', (req: any, res: any) => {
 // Start a trip
 app.post('/api/trips/start', async (req: any, res: any) => {
   try {
-    const { vehicleId, actualStartAt, corrected } = req.body || {};
-
+    const { vehicleId, actualStartAt, corrected } = req.body;
     if (!vehicleId) {
       return res.status(400).json({ error: 'vehicleId is required' });
     }
 
-    // if actualStartAt not provided, use now()
-    const startTime = actualStartAt
-      ? new Date(actualStartAt)
-      : new Date();
+    const startTime = actualStartAt ? new Date(actualStartAt) : new Date();
 
     const sql = `
-      insert into public.trips (vehicle_id, actual_start_at, status, corrected)
-      values ($1, $2, 'in_progress', coalesce($3, false))
-      returning *;
+      insert into public.trips (vehicleid, actualstartat, status, corrected)
+      values ($1, $2, 'inprogress', coalesce($3, false))
+      returning *
     `;
-
-    const result = await query(sql, [
-      vehicleId,
-      startTime.toISOString(),
-      corrected
-    ]);
-
+    const result = await query(sql, [vehicleId, startTime.toISOString(), corrected]);
     const trip = result.rows[0];
+
+    // NEW: mirror this trip into the simulation
+    try {
+      const stitched = stitchProjectRoutes();
+      if (stitched && stitched.coordinates.length > 0) {
+        // give truckService the stitched geometry if not yet set,
+        // but we already did that in startDeliverySession / startup
+        const totalDist = calculateRouteDistance({ type: 'LineString', coordinates: stitched.coordinates } as any);
+        addTruckFromTrip(
+          {
+            id: trip.id,
+            vehicle_id: trip.vehicleid,
+            actual_start_at: trip.actualstartat,
+            actual_arrival_at: trip.actualarrivalat,
+            status: trip.status,
+            corrected: trip.corrected,
+          },
+          totalDist,
+          40, // default speed km/h, or derive from TDAS
+        );
+      }
+    } catch (bridgeErr) {
+      console.error('Failed to add truck from trip', bridgeErr);
+    }
+
     res.status(201).json({ ok: true, trip });
   } catch (err: any) {
-    console.error('Error in /api/trips/start:', err);
+    console.error('Error in /api/trips/start', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 // Mark trip as arrived
 app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
   try {
     const tripId = req.params.id;
-    const { actualArrivalAt, corrected } = req.body || {};
+    const { actualArrivalAt, corrected } = req.body;
 
     if (!tripId) {
       return res.status(400).json({ error: 'trip id is required in URL' });
     }
 
-    const arrivalTime = actualArrivalAt
-      ? new Date(actualArrivalAt)
-      : new Date();
+    const arrivalTime = actualArrivalAt ? new Date(actualArrivalAt) : new Date();
 
     const sql = `
       update public.trips
-      set
-        actual_arrival_at = $1,
-        status = 'completed',
-        corrected = coalesce($2, corrected),
-        updated_at = now()
+      set actualarrivalat = $1,
+          status = 'completed',
+          corrected = coalesce($2, corrected),
+          updatedat = now()
       where id = $3
-      returning *;
+      returning *
     `;
-
-    const result = await query(sql, [
-      arrivalTime.toISOString(),
-      corrected,
-      tripId
-    ]);
+    const result = await query(sql, [arrivalTime.toISOString(), corrected, tripId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ ok: false, error: 'Trip not found' });
     }
 
     const trip = result.rows[0];
+
+    // NEW: tell simulation this trip has arrived
+    try {
+      completeTruckFromDb(trip.id, arrivalTime);
+    } catch (bridgeErr) {
+      console.error('Failed to complete truck from trip', bridgeErr);
+    }
+
     res.json({ ok: true, trip });
   } catch (err: any) {
-    console.error('Error in /api/trips/:id/arrive:', err);
+    console.error('Error in /api/trips/:id/arrive', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 // ===== API: TRIPS TODAY (with HK date & hour filters) =====
 app.get('/api/trips/today', async (req: any, res: any) => {

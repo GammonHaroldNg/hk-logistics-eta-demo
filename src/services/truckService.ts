@@ -54,6 +54,7 @@ let nextDispatchTime: Date | null = null;
 let routeGeometry: any = null;
 let corridorSegmentCount = 0;
 let isRunning = false;
+const tripToTruckId: Map<string, string> = new Map();
 
 // ===== SPEED: average TDAS capped at mixer max =====
 function getAverageProjectSpeed(defaultSpeed: number): number {
@@ -408,6 +409,137 @@ export function resetDelivery(): void {
   isRunning = false;
   console.log('Delivery session reset');
 }
+
+export interface DbTrip {
+  id: string;
+  vehicle_id: string;
+  actual_start_at: string | null;
+  actual_arrival_at: string | null;
+  status: 'planned' | 'in_progress' | 'completed';
+  corrected: boolean | null;
+}
+
+function ensureConfigForDb(): void {
+  if (!config && routeGeometry) {
+    // Minimal config so throughput computations still work
+    config = {
+      routeId: 0,
+      targetVolume: 600,
+      volumePerTruck: 8,
+      trucksPerHour: 12,
+      startTime: new Date(),        // will be used only for windows
+      defaultSpeed: 40,
+    };
+    isRunning = true;
+  }
+}
+
+export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: number): ConcreteTruck | null {
+  if (!routeGeometry) return null;
+  if (!trip.actual_start_at) return null;
+
+  ensureConfigForDb();
+
+  const startTime = new Date(trip.actual_start_at);
+  const now = new Date();
+
+  const speed = Math.min(speedKmh, MIXER_MAX_SPEED);
+  const travelTimeSeconds = (totalDist / speed) * 3600;
+
+  const elapsedSeconds = Math.max(0, (now.getTime() - startTime.getTime()) / 1000);
+  const progressRatio = Math.min(elapsedSeconds / travelTimeSeconds, 1);
+
+  const coords = routeGeometry.coordinates as [number, number][] | undefined;
+
+  let startPos: [number, number] = [0, 0];
+
+  if (Array.isArray(coords) && coords.length > 0) {
+    const first = coords[0];
+    if (
+      Array.isArray(first) &&
+      first.length >= 2 &&
+      typeof first[0] === 'number' &&
+      typeof first[1] === 'number'
+    ) {
+      startPos = [first[0], first[1]];
+    }
+  }
+
+
+
+  const truckId = `TRIP-${trip.id}`;
+
+  const truck: ConcreteTruck = {
+    truckId,
+    truckNumber: ++nextTruckNumber,
+    routeId: config!.routeId,
+    status: progressRatio >= 1 ? 'arrived' : 'en-route',
+    currentPosition: interpolatePosition(routeGeometry, progressRatio) ?? startPos,
+    progressRatio,
+    departureTime: startTime,
+    arrivalTime: progressRatio >= 1 ? now : null,
+    estimatedArrival: new Date(startTime.getTime() + travelTimeSeconds * 1000),
+    elapsedSeconds,
+    totalDistance: totalDist,
+    currentSpeed: speed,
+    concreteVolume: config!.volumePerTruck,
+  };
+
+  activeTrucks.set(truckId, truck);
+  tripToTruckId.set(trip.id, truckId);
+
+  if (truck.status === 'arrived') {
+    // If already completed according to timing, log it immediately
+    completeTruckFromDb(trip.id, now);
+  }
+
+  return truck;
+}
+
+export function completeTruckFromDb(tripId: string, arrivalTime: Date): void {
+  const truckId = tripToTruckId.get(tripId);
+  if (!truckId) return;
+
+  const truck = activeTrucks.get(truckId);
+  if (!truck || !config) return;
+
+  truck.status = 'arrived';
+  truck.arrivalTime = arrivalTime;
+  truck.progressRatio = 1;
+
+  const elapsedMs = arrivalTime.getTime() - config.startTime.getTime();
+  const hourWindow = Math.max(0, Math.floor(elapsedMs / 3600000));
+
+  const cumulativeVol = deliveryLog.reduce((s, r) => s + r.concreteVolume, 0) + truck.concreteVolume;
+
+  deliveryLog.push({
+    truckId: truck.truckId,
+    truckNumber: truck.truckNumber,
+    routeId: truck.routeId,
+    departureTime: truck.departureTime,
+    arrivalTime,
+    travelTimeSeconds: truck.elapsedSeconds,
+    concreteVolume: truck.concreteVolume,
+    cumulativeVolume: cumulativeVol,
+    hourWindow,
+  });
+
+  activeTrucks.delete(truckId);
+}
+
+export async function hydrateFromTrips(trips: DbTrip[], defaultSpeedKmh: number): Promise<void> {
+  if (!routeGeometry) return;
+  ensureConfigForDb();
+
+  const totalDist = calculateRouteDistance(routeGeometry);
+  if (totalDist <= 0) return;
+
+  for (const trip of trips) {
+    if (trip.status !== 'in_progress') continue;
+    addTruckFromTrip(trip, totalDist, defaultSpeedKmh);
+  }
+}
+
 
 export function isDeliveryRunning(): boolean {
   return isRunning;
