@@ -241,12 +241,14 @@
         initMap();
         loadTrafficData();
         loadAndDisplayRoutes();
-        setTimeout(function() {
+
+        setTimeout(function () {
           if (currentPanel === 'project') renderDeliveryForm();
         }, 2000);
 
         setInterval(loadTrafficData, 60000);
 
+        // NEW: start delivery status polling so markers and panel stay in sync
         if (!deliveryInterval) {
           pollDeliveryStatus();
           deliveryInterval = setInterval(pollDeliveryStatus, 3000);
@@ -255,20 +257,17 @@
         document.getElementById('projectBtn').onclick = () => {
           zoomToProjectRoutes();
         };
-
         document.getElementById('refreshBtn').onclick = () => {
           refreshData();
         };
-
         document.getElementById('allBtn').onclick = () => {
-          showStatusPanel(); // show traffic status for project routes
+          showStatusPanel();
         };
-
         document.getElementById('trackingBtn').onclick = () => {
-          showProjectPanel(); // show the ETA/estimation panel
+          showProjectPanel();
         };
-
       });
+
 
       function initMap() {
         try {
