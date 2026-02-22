@@ -55,6 +55,7 @@ let routeGeometry: any = null;
 let corridorSegmentCount = 0;
 let isRunning = false;
 const tripToTruckId: Map<string, string> = new Map();
+const AUTO_DISPATCH_ENABLED = false;
 
 // ===== SPEED: average TDAS capped at mixer max =====
 function getAverageProjectSpeed(defaultSpeed: number): number {
@@ -116,6 +117,8 @@ export function startDeliverySession(
 
 // ===== DISPATCH =====
 function dispatchTruck(): ConcreteTruck | null {
+  if (!AUTO_DISPATCH_ENABLED) return null;        // new line
+
   if (!config || !routeGeometry || !isRunning) return null;
 
   const totalNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
@@ -133,7 +136,7 @@ function dispatchTruck(): ConcreteTruck | null {
     ? [coords[0]![0]!, coords[0]![1]!]
     : [0, 0];
 
-  const truckId = 'CMX-' + String(nextTruckNumber).padStart(3, '0');
+  const truckId = `CMX-${String(nextTruckNumber).padStart(3, '0')}`;
   const truck: ConcreteTruck = {
     truckId,
     truckNumber: nextTruckNumber,
@@ -147,7 +150,7 @@ function dispatchTruck(): ConcreteTruck | null {
     elapsedSeconds: 0,
     totalDistance: totalDist,
     currentSpeed,
-    concreteVolume: config.volumePerTruck
+    concreteVolume: config.volumePerTruck,
   };
 
   activeTrucks.set(truckId, truck);
@@ -156,9 +159,14 @@ function dispatchTruck(): ConcreteTruck | null {
   const intervalMs = (60 / config.trucksPerHour) * 60 * 1000;
   nextDispatchTime = new Date(now.getTime() + intervalMs);
 
-  console.log('Dispatched ' + truckId + ' | Speed: ' + currentSpeed.toFixed(1) + ' km/h | ETA: ' + Math.round(travelTimeSeconds) + 's');
+  console.log(
+    'Dispatched ' + truckId +
+      ' | Speed: ' + currentSpeed.toFixed(1) +
+      ' km/h | ETA: ' + Math.round(travelTimeSeconds) + 's'
+  );
   return truck;
 }
+
 
 // ===== TICK =====
 export function tickDelivery(dtSeconds: number): void {
