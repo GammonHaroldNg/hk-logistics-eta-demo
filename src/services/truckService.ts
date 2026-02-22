@@ -187,7 +187,8 @@ export function tickDelivery(dtSeconds: number): void {
     truck.currentSpeed = liveSpeed;
 
     const distCovered = (liveSpeed * truck.elapsedSeconds) / 3600;
-    truck.progressRatio = Math.min(distCovered / truck.totalDistance, 1);
+    const newProgress = Math.min(distCovered / truck.totalDistance, 1);
+    truck.progressRatio = Math.max(truck.progressRatio, newProgress); // monotonic
     truck.currentPosition = interpolatePosition(routeGeometry, truck.progressRatio);
 
     const remainingDist = truck.totalDistance * (1 - truck.progressRatio);
@@ -457,23 +458,22 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
   const elapsedSeconds = Math.max(0, (now.getTime() - startTime.getTime()) / 1000);
   const progressRatio = Math.min(elapsedSeconds / travelTimeSeconds, 1);
 
-  const coords = routeGeometry.coordinates as [number, number][] | undefined;
-
-  let startPos: [number, number] = [0, 0];
-
-  if (Array.isArray(coords) && coords.length > 0) {
-    const first = coords[0];
-    if (
-      Array.isArray(first) &&
-      first.length >= 2 &&
-      typeof first[0] === 'number' &&
-      typeof first[1] === 'number'
-    ) {
-      startPos = [first[0], first[1]];
+  const existingId = tripToTruckId.get(trip.id);
+  if (existingId) {
+    const existing = activeTrucks.get(existingId);
+    if (existing) {
+      existing.progressRatio = Math.max(existing.progressRatio, progressRatio);
+      existing.currentPosition =
+        interpolatePosition(routeGeometry, existing.progressRatio) ?? existing.currentPosition;
+      return existing;
     }
   }
 
-
+  // NEW: define startPos for DB trucks as well
+  const coords = routeGeometry.coordinates || [];
+  const startPos: [number, number] = coords.length > 0
+    ? [coords[0]![0]!, coords[0]![1]!]
+    : [0, 0];
 
   const truckId = `TRIP-${trip.id}`;
 
@@ -497,7 +497,6 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
   tripToTruckId.set(trip.id, truckId);
 
   if (truck.status === 'arrived') {
-    // If already completed according to timing, log it immediately
     completeTruckFromDb(trip.id, now);
   }
 
