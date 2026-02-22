@@ -5,7 +5,6 @@ var DELIVERY_API = (typeof APIBASE !== 'undefined' && APIBASE) ? APIBASE : '';
 
 let deliveryInterval = null;
 let truckMarkers = {};
-let lastNonEmptyTrucks = [];
 
 // ===== RENDER CONFIG FORM =====
 function renderDeliveryForm() {
@@ -253,16 +252,14 @@ function updateDeliveryUI(data) {
 }
 
 // ===== TRUCK MARKERS =====
+
+
 function updateTruckMarkers(trucks) {
-  // Smooth out brief empty/partial responses
-  if (!trucks || trucks.length === 0) {
-    trucks = lastNonEmptyTrucks;
-  } else {
-    lastNonEmptyTrucks = trucks;
-  }
+  // If you want, keep a copy for debugging but don't reuse it:
+  lastNonEmptyTrucks = trucks && trucks.length ? trucks : lastNonEmptyTrucks;
 
   var currentIds = {};
-  trucks.forEach(function (t) { currentIds[t.truckId] = true; });
+  (trucks || []).forEach(function (t) { currentIds[t.truckId] = true; });
 
   Object.keys(truckMarkers).forEach(function (id) {
     if (!currentIds[id]) {
@@ -271,7 +268,7 @@ function updateTruckMarkers(trucks) {
     }
   });
 
-  trucks.forEach(function (t) {
+  (trucks || []).forEach(function (t) {
     if (!t.position || t.position[0] === 0) return;
     var latLng = [t.position[1], t.position[0]];
     var isArrived = t.status === 'arrived';
@@ -294,6 +291,7 @@ function updateTruckMarkers(trucks) {
     }
   });
 }
+
 
 
 function buildTruckPopup(t) {
