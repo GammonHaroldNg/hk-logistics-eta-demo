@@ -629,7 +629,7 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
 
     const trip = result.rows[0];
 
-    // NEW: tell simulation this trip has arrived
+    // IMPORTANT: tell the sim this trip has arrived
     try {
       completeTruckFromDb(trip.id, arrivalTime);
     } catch (bridgeErr) {
@@ -642,6 +642,7 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 // ===== API: TRIPS TODAY (with HK date & hour filters) =====
