@@ -82,7 +82,7 @@ async function startDelivery() {
     document.getElementById('btnStopDelivery').style.display = 'block';
 
     pollDeliveryStatus();
-    deliveryInterval = setInterval(pollDeliveryStatus, 3000);
+    deliveryInterval = setInterval(pollDeliveryStatus, 1000);
 
     if (typeof zoomToProjectRoutes === 'function') zoomToProjectRoutes();
   } catch (err) {
