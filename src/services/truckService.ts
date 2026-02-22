@@ -516,7 +516,6 @@ export function completeTruckFromDb(tripId: string, arrivalTime: Date): void {
 
   const elapsedMs = arrivalTime.getTime() - config.startTime.getTime();
   const hourWindow = Math.max(0, Math.floor(elapsedMs / 3600000));
-
   const cumulativeVol = deliveryLog.reduce((s, r) => s + r.concreteVolume, 0) + truck.concreteVolume;
 
   deliveryLog.push({
@@ -532,7 +531,9 @@ export function completeTruckFromDb(tripId: string, arrivalTime: Date): void {
   });
 
   activeTrucks.delete(truckId);
+  tripToTruckId.delete(tripId); // important
 }
+
 
 export async function hydrateFromTrips(trips: DbTrip[], defaultSpeedKmh: number): Promise<void> {
   if (!routeGeometry) return;
