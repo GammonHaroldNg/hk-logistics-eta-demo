@@ -121,23 +121,24 @@ async function pollDeliveryStatus() {
   try {
     const resp = await fetch(DELIVERY_API + "/api/delivery/status");
     if (!resp.ok) throw new Error("HTTP " + resp.status);
+
     const data = await resp.json();
 
+    // If there is no active session, don't clear the UI; just log it.
     if (!data.running) {
-      // Do NOT clear existing trucks or UI; just show a small badge.
-      showDeliveryPausedBanner();
+      console.log("Delivery session not running");
       return;
     }
 
-    hideDeliveryPausedBanner();
+    // Normal case: update side panel and markers
     updateDeliveryUI(data);
     updateTruckMarkers(data.trucks || []);
   } catch (err) {
     console.error("Poll error", err);
-    // On error, keep last known UI and markers; maybe show a small “connection lost” badge.
-    showConnectionWarning();
+    // Do nothing else here: keep last known UI and markers.
   }
 }
+
 
 
 // ===== UPDATE UI =====
