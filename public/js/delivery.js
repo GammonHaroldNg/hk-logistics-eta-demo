@@ -6,6 +6,8 @@ var DELIVERY_API = (typeof APIBASE !== 'undefined' && APIBASE) ? APIBASE : '';
 let deliveryInterval = null;
 let truckMarkers = {};
 let lastNonEmptyTrucks = [];
+let lastNonEmptyTruckList = [];
+
 
 // ===== RENDER CONFIG FORM =====
 function renderDeliveryForm() {
@@ -191,8 +193,17 @@ function updateDeliveryUI(data) {
   // --- Truck list (show travel time + ETA, not speed) ---
   var truckList = document.getElementById('projectVehicleList');
   var trucks = data.trucks || [];
+
+  // Fallback to last non-empty list so brief empty payloads don't blank the UI
+  if (!trucks.length && lastNonEmptyTruckList.length) {
+    trucks = lastNonEmptyTruckList;
+  } else if (trucks.length) {
+    lastNonEmptyTruckList = trucks;
+  }
+
   if (trucks.length === 0) {
-    truckList.innerHTML = '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
+    truckList.innerHTML =
+      '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
   } else {
     truckList.innerHTML = trucks.map(function(t) {
       var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
@@ -222,12 +233,6 @@ function updateDeliveryUI(data) {
     }).join('');
   }
 
-  // --- Performance panel (throughput focused) ---
-  var perfPanel = document.getElementById('projectPerformance');
-  var log = data.deliveryLog || [];
-  var avgTravel = log.length > 0
-    ? (log.reduce(function(s, r) { return s + r.travelTimeMinutes; }, 0) / log.length).toFixed(1)
-    : '-';
 
   // Hourly breakdown
   var hourlyHtml = '';
