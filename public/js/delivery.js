@@ -5,6 +5,7 @@ var DELIVERY_API = (typeof APIBASE !== 'undefined' && APIBASE) ? APIBASE : '';
 
 let deliveryInterval = null;
 let truckMarkers = {};
+let lastNonEmptyTrucks = [];
 
 // ===== RENDER CONFIG FORM =====
 function renderDeliveryForm() {
@@ -118,13 +119,26 @@ async function resetDeliverySession() {
 // ===== POLL =====
 async function pollDeliveryStatus() {
   try {
-    var resp = await fetch(DELIVERY_API + 'api/delivery/status');
-    var data = await resp.json();
-    if (!data.running) return;
+    const resp = await fetch(DELIVERY_API + "/api/delivery/status");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+
+    if (!data.running) {
+      // Do NOT clear existing trucks or UI; just show a small badge.
+      showDeliveryPausedBanner();
+      return;
+    }
+
+    hideDeliveryPausedBanner();
     updateDeliveryUI(data);
     updateTruckMarkers(data.trucks || []);
-  } catch (err) { console.error('Poll error:', err); }
+  } catch (err) {
+    console.error("Poll error", err);
+    // On error, keep last known UI and markers; maybe show a small “connection lost” badge.
+    showConnectionWarning();
+  }
 }
+
 
 // ===== UPDATE UI =====
 function updateDeliveryUI(data) {
@@ -255,12 +269,19 @@ function updateDeliveryUI(data) {
 
 
 function updateTruckMarkers(trucks) {
-  // If you want, keep a copy for debugging but don't reuse it:
-  lastNonEmptyTrucks = trucks && trucks.length ? trucks : lastNonEmptyTrucks;
+  // Use last non-empty list if current payload is empty or missing
+  var list = (trucks && trucks.length) ? trucks : lastNonEmptyTrucks;
+
+  if (list && list.length) {
+    lastNonEmptyTrucks = list;
+  }
 
   var currentIds = {};
-  (trucks || []).forEach(function (t) { currentIds[t.truckId] = true; });
+  (list || []).forEach(function (t) {
+    currentIds[t.truckId] = true;
+  });
 
+  // Remove markers for trucks that no longer exist in the latest list
   Object.keys(truckMarkers).forEach(function (id) {
     if (!currentIds[id]) {
       map.removeLayer(truckMarkers[id]);
@@ -268,8 +289,10 @@ function updateTruckMarkers(trucks) {
     }
   });
 
-  (trucks || []).forEach(function (t) {
+  // Add / update markers for trucks in the list
+  (list || []).forEach(function (t) {
     if (!t.position || t.position[0] === 0) return;
+
     var latLng = [t.position[1], t.position[0]];
     var isArrived = t.status === 'arrived';
     var bgColor = isArrived ? '#22c55e' : '#3b82f6';
@@ -291,6 +314,7 @@ function updateTruckMarkers(trucks) {
     }
   });
 }
+
 
 
 
