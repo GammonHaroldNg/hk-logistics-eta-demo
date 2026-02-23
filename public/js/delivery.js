@@ -234,7 +234,10 @@ function updateDeliveryUI(data) {
       hourlyHtml;
   }
 
+
   // --- Truck list (active concrete vehicles) ---
+  var truckList = document.getElementById('projectVehicleList');
+  var trucks = data.trucks || [];   // <-- this line is required
 
   if (trucks.length === 0) {
     truckList.innerHTML =
