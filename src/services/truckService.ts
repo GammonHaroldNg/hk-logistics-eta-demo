@@ -580,3 +580,8 @@ export function pruneInactiveTrips(activeTripIds: string[]): void {
     }
   }
 }
+
+export function clearActiveTrucks(): void {
+  activeTrucks.clear();
+  tripToTruckId.clear();
+}

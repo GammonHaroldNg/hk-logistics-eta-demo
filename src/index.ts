@@ -17,13 +17,25 @@ import {
 } from './services/corridorService';
 
 import {
-  startDeliverySession, tickDelivery, getDeliveryStatus,
-  stopDelivery, resetDelivery, isDeliveryRunning,
-  getTrucks, getTotalConcreteDelivered, getActiveCount,
-  getCompletedCount, getDeliveryRecords, 
-  hydrateFromTrips,  addTruckFromTrip,  completeTruckFromDb,
-  DbTrip,pruneInactiveTrips
+  startDeliverySession,
+  tickDelivery,
+  getDeliveryStatus,
+  stopDelivery,
+  resetDelivery,
+  isDeliveryRunning,
+  getTrucks,
+  getTotalConcreteDelivered,
+  getActiveCount,
+  getCompletedCount,
+  getDeliveryRecords,
+  hydrateFromTrips,
+  addTruckFromTrip,
+  completeTruckFromDb,
+  DbTrip,
+  pruneInactiveTrips,
+  clearActiveTrucks
 } from './services/truckService';
+
 
 const app = express();
 const PORT = 3000;
@@ -174,6 +186,34 @@ async function updateTrafficData(): Promise<void> {
 
     await updateTrafficData();
 
+    // Helper: rebuild trucks in RAM from today's in_progress trips
+    async function syncTrucksFromDb() {
+      if (!process.env.DATABASE_URL) return;
+
+      const sql = `
+        select
+          id,
+          vehicle_id,
+          actual_start_at,
+          actual_arrival_at,
+          status,
+          corrected
+        from public.trips
+        where status = 'in_progress'
+          and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+              (now() at time zone 'Asia/Hong_Kong')::date
+        order by actual_start_at asc
+      `;
+      const result = await query(sql);
+      const rows = result.rows as DbTrip[];
+
+      clearActiveTrucks();
+      await hydrateFromTrips(rows, 40);
+      pruneInactiveTrips(rows.map(t => t.id));
+      console.log('Synced trucks from DB:', rows.length);
+    }
+
+
     // 1) Auto‑init delivery session so routeGeometry + config exist
     const stitched = stitchProjectRoutes();
     if (stitched && stitched.coordinates.length > 0) {
@@ -214,6 +254,9 @@ async function updateTrafficData(): Promise<void> {
           'Filtered corridors rebuilt after WFS:',
           Object.keys(getFilteredCorridors()).length,
         );
+
+        await syncTrucksFromDb();
+        
       })
       .catch((err: any) => {
         console.error('WFS enrichment failed:', err);
@@ -233,33 +276,11 @@ async function updateTrafficData(): Promise<void> {
       }
     }, 1000);
 
-    // 2) Hydrate trucks from today’s in_progress trips
+    // 2) Initial sync of trucks from DB
     try {
-      if (!process.env.DATABASE_URL) {
-        console.warn('No DATABASE_URL set; skipping hydrateFromTrips');
-      } else {
-        const sql = `
-          select
-            id,
-            vehicle_id,
-            actual_start_at,
-            actual_arrival_at,
-            status,
-            corrected
-          from public.trips
-          where status = 'in_progress'
-            and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
-                (now() at time zone 'Asia/Hong_Kong')::date
-          order by actual_start_at asc
-        `;
-        const result = await query(sql);
-        const rows = result.rows as DbTrip[];
-        await hydrateFromTrips(rows, 40);
-        pruneInactiveTrips(rows.map(t => t.id));
-        console.log('Hydrated trucks from trips:', rows.length);
-      }
+      await syncTrucksFromDb();
     } catch (e) {
-      console.error('Failed to hydrate trucks from trips', e);
+      console.error('Failed to sync trucks from trips', e);
     }
 
     console.log('Server initialized, delivery tick running');
