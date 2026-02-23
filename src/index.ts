@@ -187,6 +187,7 @@ async function updateTrafficData(): Promise<void> {
     await updateTrafficData();
 
     // Helper: rebuild trucks in RAM from today's in_progress trips in DB
+    // inside the startup IIFE, after updateTrafficData()
     async function syncTrucksFromDb() {
       if (!process.env.DATABASE_URL) return;
 
@@ -206,14 +207,13 @@ async function updateTrafficData(): Promise<void> {
       const result = await query(sql);
       const rows = result.rows as DbTrip[];
 
-      // 1) Hydrate all in_progress trips (adds missing, updates existing)
-      await hydrateFromTrips(
-        rows.filter(t => t.status === 'in_progress'),
-        40
-      );
+      const inProgress = rows.filter(t => t.status === 'in_progress');
 
-      // 2) Remove trucks whose trips are no longer in_progress
-      const activeIds = rows.filter(t => t.status === 'in_progress').map(t => t.id);
+      // Add/update all in_progress trips
+      await hydrateFromTrips(inProgress, 40);
+
+      // Remove trucks whose trips are no longer in_progress
+      const activeIds = inProgress.map(t => t.id);
       pruneInactiveTrips(activeIds);
 
       console.log('Synced trucks from DB:', activeIds.length);
@@ -282,6 +282,10 @@ async function updateTrafficData(): Promise<void> {
         tickDelivery(1);
       }
     }, 1000);
+
+    setInterval(() => {
+      syncTrucksFromDb().catch(err => console.error('Failed to sync trucks', err));
+    }, 5000);
 
     // 2) Initial sync of trucks from DB
     try {
@@ -597,36 +601,14 @@ app.post('/api/trips/start', async (req: any, res: any) => {
     const result = await query(sql, [vehicleId, startTime.toISOString(), corrected]);
     const trip = result.rows[0];
 
-    // NEW: mirror this trip into the simulation
-    try {
-      const stitched = stitchProjectRoutes();
-      if (stitched && stitched.coordinates.length > 0) {
-        // give truckService the stitched geometry if not yet set,
-        // but we already did that in startDeliverySession / startup
-        const totalDist = calculateRouteDistance({ type: 'LineString', coordinates: stitched.coordinates } as any);
-        addTruckFromTrip(
-          {
-            id: trip.id,
-            vehicle_id: trip.vehicle_id,
-            actual_start_at: trip.actual_start_at,
-            actual_arrival_at: trip.actual_arrival_at,
-            status: trip.status,
-            corrected: trip.corrected,
-          },
-          totalDist,
-          40, // default speed km/h, or derive from TDAS
-        );
-      }
-    } catch (bridgeErr) {
-      console.error('Failed to add truck from trip', bridgeErr);
-    }
-
+    // Trip Admin → DB only; sim will pick this up on next sync
     res.status(201).json({ ok: true, trip });
   } catch (err: any) {
     console.error('Error in /api/trips/start', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 // Mark trip as arrived
@@ -658,19 +640,14 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
 
     const trip = result.rows[0];
 
-    // IMPORTANT: tell the sim this trip has arrived
-    try {
-      completeTruckFromDb(trip.id, arrivalTime);
-    } catch (bridgeErr) {
-      console.error('Failed to complete truck from trip', bridgeErr);
-    }
-
+    // Trip Admin → DB only; sim will drop this on next sync
     res.json({ ok: true, trip });
   } catch (err: any) {
     console.error('Error in /api/trips/:id/arrive', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 
 
