@@ -234,9 +234,11 @@ function updateDeliveryUI(data) {
       hourlyHtml;
   }
 
-  // --- Truck list (active concrete vehicles) ---
+ // --- Truck list (active concrete vehicles) ---
   var truckList = document.getElementById('projectVehicleList');
+  var trucks = data.trucks || [];   // <-- add this line here
 
+  // If you still want the fallback, keep this; otherwise remove it:
   if (!trucks.length && lastNonEmptyTruckList.length) {
     trucks = lastNonEmptyTruckList;
   } else if (trucks.length) {
@@ -274,7 +276,7 @@ function updateDeliveryUI(data) {
         '</div></div>';
     }).join('');
   }
-}
+
 
 
 // ===== TRUCK MARKERS =====
