@@ -186,7 +186,7 @@ async function updateTrafficData(): Promise<void> {
 
     await updateTrafficData();
 
-    // Helper: rebuild trucks in RAM from today's in_progress trips
+    // Helper: rebuild trucks in RAM from today's in_progress trips in DB
     async function syncTrucksFromDb() {
       if (!process.env.DATABASE_URL) return;
 
@@ -199,19 +199,26 @@ async function updateTrafficData(): Promise<void> {
           status,
           corrected
         from public.trips
-        where status = 'in_progress'
-          and (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+        where (actual_start_at at time zone 'Asia/Hong_Kong')::date =
               (now() at time zone 'Asia/Hong_Kong')::date
         order by actual_start_at asc
       `;
       const result = await query(sql);
       const rows = result.rows as DbTrip[];
 
-      clearActiveTrucks();
-      await hydrateFromTrips(rows, 40);
-      pruneInactiveTrips(rows.map(t => t.id));
-      console.log('Synced trucks from DB:', rows.length);
+      // 1) Hydrate all in_progress trips (adds missing, updates existing)
+      await hydrateFromTrips(
+        rows.filter(t => t.status === 'in_progress'),
+        40
+      );
+
+      // 2) Remove trucks whose trips are no longer in_progress
+      const activeIds = rows.filter(t => t.status === 'in_progress').map(t => t.id);
+      pruneInactiveTrips(activeIds);
+
+      console.log('Synced trucks from DB:', activeIds.length);
     }
+
 
 
     // 1) Auto‑init delivery session so routeGeometry + config exist
@@ -256,7 +263,7 @@ async function updateTrafficData(): Promise<void> {
         );
 
         await syncTrucksFromDb();
-        
+
       })
       .catch((err: any) => {
         console.error('WFS enrichment failed:', err);
