@@ -235,14 +235,6 @@ function updateDeliveryUI(data) {
   }
 
   // --- Truck list (active concrete vehicles) ---
-  var truckList = document.getElementById('projectVehicleList');
-  var trucks = data.trucks || [];
-
-  if (!trucks.length && lastNonEmptyTruckList.length) {
-    trucks = lastNonEmptyTruckList;
-  } else if (trucks.length) {
-    lastNonEmptyTruckList = trucks;
-  }
 
   if (trucks.length === 0) {
     truckList.innerHTML =
