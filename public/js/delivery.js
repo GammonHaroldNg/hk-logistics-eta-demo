@@ -119,6 +119,8 @@ async function resetDeliverySession() {
 }
 
 // ===== POLL =====
+let lastGoodStatus = null;
+
 async function pollDeliveryStatus() {
   try {
     const resp = await fetch(DELIVERY_API + "/api/delivery/status");
@@ -126,22 +128,39 @@ async function pollDeliveryStatus() {
 
     const data = await resp.json();
 
-    // If there is no active session, don't clear the UI; just log it.
-    if (!data.running) {
-      console.log("Delivery session not running");
+    // If there is no active session, don't touch existing UI.
+    if (!data.running || !data.config || !data.progress) {
+      console.log("Delivery session not running or incomplete status");
       return;
     }
 
-    // Normal case: update side panel and markers
+    // Some backends may temporarily return zeros; treat a fully zero snapshot as suspect.
+    const hasAnyProgress =
+      data.progress.delivered > 0 ||
+      data.progress.trucksEnRoute > 0 ||
+      data.progress.trucksCompleted > 0 ||
+      (data.trucks && data.trucks.length > 0);
+
+    if (!hasAnyProgress && lastGoodStatus) {
+      // Keep showing last good snapshot instead of resetting to 0/0.
+      updateDeliveryUI(lastGoodStatus);
+      updateTruckMarkers(lastGoodStatus.trucks || []);
+      return;
+    }
+
+    // Normal case: remember and render this snapshot.
+    lastGoodStatus = data;
     updateDeliveryUI(data);
     updateTruckMarkers(data.trucks || []);
   } catch (err) {
     console.error("Poll error", err);
-    // Do nothing else here: keep last known UI and markers.
+    // On error, keep last UI & markers.
+    if (lastGoodStatus) {
+      updateDeliveryUI(lastGoodStatus);
+      updateTruckMarkers(lastGoodStatus.trucks || []);
+    }
   }
 }
-
-
 
 // ===== UPDATE UI =====
 function updateDeliveryUI(data) {
