@@ -151,7 +151,7 @@ function updateDeliveryUI(data) {
   var pct = p.percentComplete;
   var barColor = tp.behindSchedule ? '#ef4444' : '#22c55e';
 
-  // --- Progress + Throughput ---
+  // --- Progress + Throughput (top card) ---
   var throughputHtml = '';
   if (tp.behindSchedule) {
     throughputHtml =
@@ -190,11 +190,55 @@ function updateDeliveryUI(data) {
       '<button onclick="resetDeliverySession()" style="padding:6px 10px;background:#6b7280;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer;">↺ Reset</button>' +
     '</div>';
 
-  // --- Truck list (show travel time + ETA, not speed) ---
+  // --- Performance panel (bottom card in side panel) ---
+  var perfPanel = document.getElementById('projectPerformance');
+  var log = data.deliveryLog || [];
+  var avgTravel = log.length > 0
+    ? (log.reduce(function (s, r) { return s + r.travelTimeMinutes; }, 0) / log.length).toFixed(1)
+    : '-';
+
+  var hourlyHtml = '';
+  if (tp.hourlyBreakdown && tp.hourlyBreakdown.length > 0) {
+    hourlyHtml = '<div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:8px;">' +
+      '<div style="font-size:11px;color:#6b7280;margin-bottom:6px;font-weight:600;">Hourly Throughput</div>';
+    tp.hourlyBreakdown.forEach(function (h) {
+      var hColor = h.diff >= 0 ? '#22c55e' : '#ef4444';
+      var diffStr = h.diff >= 0 ? '+' + h.diff : '' + h.diff;
+      hourlyHtml +=
+        '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">' +
+          '<span>Hour ' + (h.hour + 1) + '</span>' +
+          '<span><b>' + h.actual + '</b>/' + h.target +
+            ' <span style="color:' + hColor + ';font-size:11px;">(' + diffStr + ')</span></span>' +
+        '</div>';
+    });
+    hourlyHtml += '</div>';
+  }
+
+  if (perfPanel) {
+    perfPanel.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+        '<div><div style="color:#6b7280;font-size:11px;">Target</div><div style="font-weight:600;">' + c.targetVolume + ' m³</div></div>' +
+        '<div><div style="color:#6b7280;font-size:11px;">Delivered</div><div style="font-weight:600;color:#22c55e;">' + p.delivered + ' m³</div></div>' +
+        '<div><div style="color:#6b7280;font-size:11px;">Avg Travel</div><div style="font-weight:600;">' + avgTravel + ' min</div></div>' +
+        '<div><div style="color:#6b7280;font-size:11px;">Throughput</div><div style="font-weight:600;color:' + (tp.behindSchedule ? '#ef4444' : '#22c55e') + ';">' + tp.actualRate + '/hr</div></div>' +
+      '</div>' +
+      (p.estimatedCompletion
+        ? '<div style="margin-top:10px;padding:8px;background:' + (tp.behindSchedule ? '#fef2f2' : '#f0fdf4') + ';border:1px solid ' + (tp.behindSchedule ? '#fecaca' : '#bbf7d0') + ';border-radius:6px;">' +
+            '<div style="font-size:11px;color:#6b7280;">Projected Completion</div>' +
+            '<div style="font-size:14px;font-weight:600;color:' + (tp.behindSchedule ? '#dc2626' : '#22c55e') + ';">' +
+              new Date(p.estimatedCompletion).toLocaleTimeString('en-HK') +
+              (tp.delayMinutes > 0
+                ? ' <span style="font-size:12px;font-weight:400;">(+' + tp.delayMinutes + ' min delay)</span>'
+                : ' <span style="font-size:12px;font-weight:400;">(on schedule)</span>') +
+            '</div></div>'
+        : '') +
+      hourlyHtml;
+  }
+
+  // --- Truck list (active concrete vehicles) ---
   var truckList = document.getElementById('projectVehicleList');
   var trucks = data.trucks || [];
 
-  // Fallback to last non-empty list so brief empty payloads don't blank the UI
   if (!trucks.length && lastNonEmptyTruckList.length) {
     trucks = lastNonEmptyTruckList;
   } else if (trucks.length) {
@@ -205,7 +249,7 @@ function updateDeliveryUI(data) {
     truckList.innerHTML =
       '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
   } else {
-    truckList.innerHTML = trucks.map(function(t) {
+    truckList.innerHTML = trucks.map(function (t) {
       var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
       var statusIcon = t.status === 'en-route' ? '🚛' : '✅';
       var etaStr = t.status === 'en-route'
@@ -232,44 +276,8 @@ function updateDeliveryUI(data) {
         '</div></div>';
     }).join('');
   }
-
-
-  // Hourly breakdown
-  var hourlyHtml = '';
-  if (tp.hourlyBreakdown && tp.hourlyBreakdown.length > 0) {
-    hourlyHtml = '<div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:8px;">' +
-      '<div style="font-size:11px;color:#6b7280;margin-bottom:6px;font-weight:600;">Hourly Throughput</div>';
-    tp.hourlyBreakdown.forEach(function(h) {
-      var pctH = h.target > 0 ? Math.round((h.actual / h.target) * 100) : 0;
-      var hColor = h.diff >= 0 ? '#22c55e' : '#ef4444';
-      var diffStr = h.diff >= 0 ? '+' + h.diff : '' + h.diff;
-      hourlyHtml +=
-        '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">' +
-          '<span>Hour ' + (h.hour + 1) + '</span>' +
-          '<span><b>' + h.actual + '</b>/' + h.target +
-            ' <span style="color:' + hColor + ';font-size:11px;">(' + diffStr + ')</span></span>' +
-        '</div>';
-    });
-    hourlyHtml += '</div>';
-  }
-
-  perfPanel.innerHTML =
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
-      '<div><div style="color:#6b7280;font-size:11px;">Target</div><div style="font-weight:600;">' + c.targetVolume + ' m³</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Delivered</div><div style="font-weight:600;color:#22c55e;">' + p.delivered + ' m³</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Avg Travel</div><div style="font-weight:600;">' + avgTravel + ' min</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Throughput</div><div style="font-weight:600;color:' + (tp.behindSchedule ? '#ef4444' : '#22c55e') + ';">' + tp.actualRate + '/hr</div></div>' +
-    '</div>' +
-    (p.estimatedCompletion
-      ? '<div style="margin-top:10px;padding:8px;background:' + (tp.behindSchedule ? '#fef2f2' : '#f0fdf4') + ';border:1px solid ' + (tp.behindSchedule ? '#fecaca' : '#bbf7d0') + ';border-radius:6px;">' +
-          '<div style="font-size:11px;color:#6b7280;">Projected Completion</div>' +
-          '<div style="font-size:14px;font-weight:600;color:' + (tp.behindSchedule ? '#dc2626' : '#22c55e') + ';">' +
-            new Date(p.estimatedCompletion).toLocaleTimeString('en-HK') +
-            (tp.delayMinutes > 0 ? ' <span style="font-size:12px;font-weight:400;">(+' + tp.delayMinutes + ' min delay)</span>' : ' <span style="font-size:12px;font-weight:400;">(on schedule)</span>') +
-          '</div></div>'
-      : '') +
-    hourlyHtml;
 }
+
 
 // ===== TRUCK MARKERS =====
 
