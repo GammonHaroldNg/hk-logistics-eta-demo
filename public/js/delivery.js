@@ -128,37 +128,17 @@ async function pollDeliveryStatus() {
 
     const data = await resp.json();
 
-    // If there is no active session, don't touch existing UI.
     if (!data.running || !data.config || !data.progress) {
-      console.log("Delivery session not running or incomplete status");
+      // Session not running: do nothing; UI keeps last state.
+      console.log("Delivery session not running");
       return;
     }
 
-    // Some backends may temporarily return zeros; treat a fully zero snapshot as suspect.
-    const hasAnyProgress =
-      data.progress.delivered > 0 ||
-      data.progress.trucksEnRoute > 0 ||
-      data.progress.trucksCompleted > 0 ||
-      (data.trucks && data.trucks.length > 0);
-
-    if (!hasAnyProgress && lastGoodStatus) {
-      // Keep showing last good snapshot instead of resetting to 0/0.
-      updateDeliveryUI(lastGoodStatus);
-      updateTruckMarkers(lastGoodStatus.trucks || []);
-      return;
-    }
-
-    // Normal case: remember and render this snapshot.
-    lastGoodStatus = data;
     updateDeliveryUI(data);
     updateTruckMarkers(data.trucks || []);
   } catch (err) {
     console.error("Poll error", err);
-    // On error, keep last UI & markers.
-    if (lastGoodStatus) {
-      updateDeliveryUI(lastGoodStatus);
-      updateTruckMarkers(lastGoodStatus.trucks || []);
-    }
+    // On error we keep last UI and markers; do NOT call updateDeliveryUI / updateTruckMarkers.
   }
 }
 
@@ -256,7 +236,6 @@ function updateDeliveryUI(data) {
 
   // --- Truck list (active concrete vehicles) ---
   var truckList = document.getElementById('projectVehicleList');
-  var trucks = data.trucks || [];
 
   if (!trucks.length && lastNonEmptyTruckList.length) {
     trucks = lastNonEmptyTruckList;
@@ -302,19 +281,14 @@ function updateDeliveryUI(data) {
 
 
 function updateTruckMarkers(trucks) {
-  // Use last non-empty list if current payload is empty or missing
-  var list = (trucks && trucks.length) ? trucks : lastNonEmptyTrucks;
-
-  if (list && list.length) {
-    lastNonEmptyTrucks = list;
-  }
+  // Trust the backend: if trucks is empty, remove all markers.
+  var list = trucks || [];
 
   var currentIds = {};
-  (list || []).forEach(function (t) {
+  list.forEach(function (t) {
     currentIds[t.truckId] = true;
   });
 
-  // Remove markers for trucks that no longer exist in the latest list
   Object.keys(truckMarkers).forEach(function (id) {
     if (!currentIds[id]) {
       map.removeLayer(truckMarkers[id]);
@@ -322,8 +296,7 @@ function updateTruckMarkers(trucks) {
     }
   });
 
-  // Add / update markers for trucks in the list
-  (list || []).forEach(function (t) {
+  list.forEach(function (t) {
     if (!t.position || t.position[0] === 0) return;
 
     var latLng = [t.position[1], t.position[0]];
@@ -347,8 +320,6 @@ function updateTruckMarkers(trucks) {
     }
   });
 }
-
-
 
 
 function buildTruckPopup(t) {
