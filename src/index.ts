@@ -22,7 +22,7 @@ import {
   getTrucks, getTotalConcreteDelivered, getActiveCount,
   getCompletedCount, getDeliveryRecords, 
   hydrateFromTrips,  addTruckFromTrip,  completeTruckFromDb,
-  DbTrip,
+  DbTrip,pruneInactiveTrips
 } from './services/truckService';
 
 const app = express();
@@ -255,6 +255,7 @@ async function updateTrafficData(): Promise<void> {
         const result = await query(sql);
         const rows = result.rows as DbTrip[];
         await hydrateFromTrips(rows, 40);
+        pruneInactiveTrips(rows.map(t => t.id));
         console.log('Hydrated trucks from trips:', rows.length);
       }
     } catch (e) {

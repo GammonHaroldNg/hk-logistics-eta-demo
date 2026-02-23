@@ -568,3 +568,15 @@ export function getCompletedCount(): number {
 export function getDeliveryRecords(): DeliveryRecord[] {
   return deliveryLog;
 }
+
+export function pruneInactiveTrips(activeTripIds: string[]): void {
+  for (const [tripId, truckId] of tripToTruckId.entries()) {
+    if (!activeTripIds.includes(tripId)) {
+      const truck = activeTrucks.get(truckId);
+      if (truck) {
+        activeTrucks.delete(truckId);
+      }
+      tripToTruckId.delete(tripId);
+    }
+  }
+}
