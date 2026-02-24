@@ -19,8 +19,8 @@ html, body {
   width: 100%;
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--light);
-  color: var(--dark);
+  background: rgb(33, 40, 48);   /* dark background */
+  color: #e5e7eb;                /* light text */
 }
 
 body {
@@ -34,21 +34,18 @@ body {
   height: 100vh;
 }
 
+/* Optional: remove the old top header bar look */
 .header {
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
-  padding: 16px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: transparent;
+  border-bottom: none;
+  padding: 0 24px 8px;  /* or just 0 if you later remove header entirely */
+  box-shadow: none;
 }
 
 .header h1 {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
-  color: #1f2937;
-
+  color: #e5e7eb;
 }
 
 .nav {
