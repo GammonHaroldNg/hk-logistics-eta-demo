@@ -332,3 +332,33 @@ main {
   border-right: 6px solid transparent;
   border-bottom: 8px solid #7c3aed;
 }
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.panel-header-row h2 {
+  margin: 0;
+}
+
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: none;
+  background: #111827;
+  color: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-icon:hover {
+  background: #1f2937;
+}
+

@@ -23,11 +23,14 @@
                 </div>
 
                 <div class="map-controls">
-                  <button class="btn btn-mode active" id="projectBtn">Project Routes</button>
-                  <button class="btn btn-mode" id="allBtn">Traffic Status</button>
-                  <button class="btn btn-primary" id="refreshBtn">Refresh</button>
-                  <button class="btn btn-secondary" id="trackingBtn">Tracking</button>
+                  <button class="btn btn-mode active" id="projectBtn">
+                    Project Routes
+                  </button>
+                  <button class="btn btn-secondary" id="trackingBtn">
+                    Logistics Tracking
+                  </button>
                 </div>
+
             </div>
             
             <div class="stats-panel">
@@ -38,7 +41,13 @@
               <div class="title-accent-bar"></div>
 
               <div id="overviewPanel">
-                <h2>📊Project Route Status</h2>
+                
+                <div class="panel-header-row">
+                  <h2>📊 Project Route Status</h2>
+                  <button class="btn-icon" id="refreshRoutesBtn" title="Refresh">
+                    ⟳
+                  </button>
+                </div>
 
                 <div class="stats-grid">
                   <div class="stat-item filter-stat active" data-filter="GREEN" id="statGreen" onclick="toggleFilter('GREEN')">
@@ -254,17 +263,21 @@
         }
 
         document.getElementById('projectBtn').onclick = () => {
+          showProjectPanel();
           zoomToProjectRoutes();
         };
-        document.getElementById('refreshBtn').onclick = () => {
-          refreshData();
-        };
-        document.getElementById('allBtn').onclick = () => {
-          showStatusPanel();
-        };
+
+
         document.getElementById('trackingBtn').onclick = () => {
-          showProjectPanel();
+          showTrackingMode();
         };
+
+          const refreshBtn = document.getElementById('refreshRoutesBtn');
+          if (refreshBtn) {
+            refreshBtn.onclick = () => {
+              refreshData();
+            };
+          }
       });
 
 
@@ -287,16 +300,16 @@
       let currentPanel = 'project'; // 'project' or 'status'
 
       function showProjectPanel() {
+        currentPanel = 'status'; // or 'project', but consistent
+        document.getElementById('projectPanel').style.display = 'none';
+        document.getElementById('overviewPanel').style.display = 'block';
+      }
+
+      function showTrackingMode() {
         currentPanel = 'project';
         document.getElementById('projectPanel').style.display = 'block';
         document.getElementById('overviewPanel').style.display = 'none';
-         renderDeliveryForm();  // ← ADD THIS LINE
-      }
-
-      function showStatusPanel() {
-        currentPanel = 'status';
-        document.getElementById('projectPanel').style.display = 'none';
-        document.getElementById('overviewPanel').style.display = 'block';
+        renderDeliveryForm();
       }
 
 
