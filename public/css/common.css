@@ -164,3 +164,42 @@ main {
   gap: 8px;
   z-index: 1000;
 }
+
+/* base style for both map mode buttons */
+.btn-mode {
+  min-width: 160px;              /* same length */
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: #111827;           /* same fill color */
+  color: #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s, box-shadow 0.1s;
+}
+
+.btn-mode:hover {
+  background: #1f2937;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* active state: highlight slightly */
+.btn-mode.active {
+  background: #3b82f6;
+  color: #f9fafb;
+}
+
+/* icon + text layout */
+.btn-icon-emoji {
+  font-size: 16px;
+}
+
+.btn-label {
+  white-space: nowrap;
+}
