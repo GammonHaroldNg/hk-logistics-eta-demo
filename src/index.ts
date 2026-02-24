@@ -219,7 +219,35 @@ async function updateTrafficData(): Promise<void> {
       console.log('Synced trucks from DB:', activeIds.length);
     }
 
+    async function loadTodayDeliveryTarget() {
+      const sql = `
+        select
+          operation_date,
+          target_concrete_volume,
+          work_start_hour,
+          work_end_hour,
+          planned_trucks_per_hour
+        from public.delivery_targets
+        where operation_date = (now() at time zone 'Asia/Hong_Kong')::date
+        order by updated_at desc, created_at desc
+        limit 1
+      `;
 
+      const result = await query(sql);
+      const row = result.rows[0];
+
+      if (!row) {
+        console.warn('No delivery_targets row for today, using defaults');
+        return null;
+      }
+
+      return {
+        targetVolume: Number(row.target_concrete_volume) || 600,
+        trucksPerHour: Number(row.planned_trucks_per_hour) || 12,
+        startTime: row.work_start_hour as string,
+        endTime: row.work_end_hour as string,
+      };
+    }
 
     // 1) Auto‑init delivery session so routeGeometry + config exist
     const stitched = stitchProjectRoutes();
@@ -229,23 +257,45 @@ async function updateTrafficData(): Promise<void> {
         coordinates: stitched.coordinates,
       };
 
-      startDeliverySession(
-        {
-          routeId: 0,          // or your main project route id
-          targetVolume: 600,   // defaults, just for stats
-          volumePerTruck: 8,
-          trucksPerHour: 12,
-          startTime: new Date(),
-          defaultSpeed: 40,
-        },
-        mergedGeometry,
-        stitched.segmentCount,
-      );
+      const targetConfig = await loadTodayDeliveryTarget();
 
-      console.log('Auto delivery session initialized at startup');
-    } else {
-      console.warn('No project route geometry found for auto init');
-    }
+        const targetVolume = targetConfig?.targetVolume ?? 600;
+        const trucksPerHour = targetConfig?.trucksPerHour ?? 12;
+
+        // optional: use work_start_hour as session startTime
+        const startTime =
+          targetConfig?.startTime
+            ? new Date(
+                `${(new Date())
+                  .toISOString()
+                  .slice(0, 10)}T${targetConfig.startTime}`
+              )
+            : new Date();
+
+        startDeliverySession(
+          {
+            routeId: 0,
+            targetVolume,
+            volumePerTruck: 8,
+            trucksPerHour,
+            startTime,
+            defaultSpeed: 40,
+          },
+          mergedGeometry,
+          stitched.segmentCount,
+        );
+
+        console.log(
+          'Auto delivery session initialized with DB target:',
+          targetVolume,
+          'm³,',
+          trucksPerHour,
+          'trucks/hr',
+        );
+      } else {
+        console.warn('No project route geometry found for auto init');
+      }
+
 
     // existing WFS enrichment
     fetchAdditionalCorridorsFromWFS()
