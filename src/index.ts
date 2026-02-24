@@ -350,6 +350,52 @@ async function updateTrafficData(): Promise<void> {
   }
 })();
 
+async function loadTodayTruckPlan() {
+  const sql = `
+    select
+      operation_date,
+      target_concrete_volume,
+      work_start_hour,
+      work_end_hour,
+      planned_trucks_per_hour
+    from public.delivery_targets
+    where operation_date = (now() at time zone 'Asia/Hong_Kong')::date
+    order by updated_at desc, created_at desc
+    limit 1
+  `;
+  const result = await query(sql);
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const workStart = row.work_start_hour as string; // '08:00:00'
+  const workEnd   = row.work_end_hour as string;   // '23:00:00'
+  const trucksPerHour = Number(row.planned_trucks_per_hour) || 0;
+
+  const [shRaw, smRaw] = workStart.split(':');
+  const [ehRaw, emRaw] = workEnd.split(':');
+
+  const sh = Number(shRaw ?? 0);
+  const sm = Number(smRaw ?? 0);
+  const eh = Number(ehRaw ?? 0);
+  const em = Number(emRaw ?? 0);
+
+  const startMinutes = sh * 60 + sm;
+  const endMinutes = eh * 60 + em;
+  const workingMinutes = Math.max(0, endMinutes - startMinutes);
+  const workingHours = workingMinutes / 60;
+
+  return {
+    operationDate: row.operation_date,
+    trucksPerHour,
+    workingHours,
+    workStart,
+    workEnd,
+  };
+}
+
 
 
 // ===== PAGE ROUTES =====
@@ -659,6 +705,82 @@ app.post('/api/trips/start', async (req: any, res: any) => {
   }
 });
 
+// ===== API: SIMPLE DELIVERY STATUS (trip-count based) =====
+app.get('/api/delivery/simple-status', async (req: any, res: any) => {
+  try {
+    const plan = await loadTodayTruckPlan();
+    if (!plan) {
+      return res.json({
+        ok: true,
+        hasPlan: false,
+        message: 'No delivery_targets row for today',
+      });
+    }
+
+    // 1) Fetch today’s trips (HK time)
+    const tripsSql = `
+      select
+        id,
+        vehicle_id,
+        actual_start_at,
+        actual_arrival_at,
+        status
+      from public.trips
+      where (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+            (now() at time zone 'Asia/Hong_Kong')::date
+    `;
+    const tripsResult = await query(tripsSql);
+    const trips = tripsResult.rows;
+
+    // 2) Count completed + in_progress
+    const completedTrips = trips.filter((t: any) => t.status === 'completed');
+    const inProgressTrips = trips.filter((t: any) => t.status === 'in_progress');
+
+    // 3) Planned totals based on trucks/hour and working hours
+    const plannedTripsTotal = Math.round(plan.trucksPerHour * plan.workingHours);
+
+    // 4) Progress by vehicle count, not volume
+    const percentComplete =
+      plannedTripsTotal > 0
+        ? Math.round((completedTrips.length / plannedTripsTotal) * 100)
+        : 0;
+
+    // 5) Optional hourly breakdown (by arrival hour in HK time)
+    const hourly: Record<string, number> = {};
+    for (const t of completedTrips) {
+      if (!t.actual_arrival_at) continue;
+      const hkHourSql = `
+        select extract(hour from ($1::timestamptz at time zone 'Asia/Hong_Kong')) as h
+      `;
+      const r = await query(hkHourSql, [t.actual_arrival_at]);
+      const h = r.rows[0].h as number;
+      const key = `${h}:00`;
+      hourly[key] = (hourly[key] || 0) + 1;
+    }
+
+    res.json({
+      ok: true,
+      hasPlan: true,
+      plan: {
+        operationDate: plan.operationDate,
+        workStart: plan.workStart,
+        workEnd: plan.workEnd,
+        trucksPerHour: plan.trucksPerHour,
+        workingHours: plan.workingHours,
+        plannedTripsTotal,
+      },
+      tripsSummary: {
+        completedCount: completedTrips.length,
+        inProgressCount: inProgressTrips.length,
+        percentComplete,
+        hourlyCompleted: hourly,
+      },
+    });
+  } catch (err: any) {
+    console.error('Error in /api/delivery/simple-status:', err);
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
 
 
 // Mark trip as arrived

@@ -77,24 +77,120 @@ let lastGoodStatus = null;
 
 async function pollDeliveryStatus() {
   try {
-    const resp = await fetch(DELIVERY_API + "/api/delivery/status");
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const [simResp, simpleResp] = await Promise.all([
+      fetch(DELIVERY_API + "/api/delivery/status"),
+      fetch(DELIVERY_API + "/api/delivery/simple-status"),
+    ]);
 
-    const data = await resp.json();
+    const simData = await simResp.json();
+    const simpleData = await simpleResp.json();
 
-    if (!data.running || !data.config || !data.progress) {
-      // Session not running: do nothing; UI keeps last state.
+    if (!simResp.ok || !simData.running) {
       console.log("Delivery session not running");
       return;
     }
 
-    updateDeliveryUI(data);
-    updateTruckMarkers(data.trucks || []);
+    // trucks still from sim
+    updateTruckMarkers(simData.trucks || []);
+
+    // overview + timeline from simple backend logic
+    if (simpleData.ok && simpleData.hasPlan) {
+      updateOverviewFromSimple(simpleData);
+    }
   } catch (err) {
     console.error("Poll error", err);
-    // On error we keep last UI and markers; do NOT call updateDeliveryUI / updateTruckMarkers.
   }
 }
+
+function updateOverviewFromSimple(simple) {
+  const plan = simple.plan;
+  const sum = simple.tripsSummary;
+
+  const pct = sum.percentComplete;
+  const completed = sum.completedCount;
+  const inProgress = sum.inProgressCount;
+  const plannedTotal = plan.plannedTripsTotal;
+
+  const barColor = pct < 100 ? '#3b82f6' : '#22c55e';
+
+  // ==== top card: Concrete Delivery Overview ====
+  const overviewCard = document.querySelector('#projectPanel .eta-info');
+  if (overviewCard) {
+    overviewCard.classList.add('active');
+    overviewCard.classList.remove('inactive');
+  }
+
+  const infoEl = document.getElementById('projectRouteInfo');
+  if (infoEl) {
+    infoEl.innerHTML =
+      '<div style="margin-bottom:10px;font-size:12px;color:#9ca3af;">' +
+        'Today plan: <b>' + plannedTotal + ' trips</b> · Completed: <b>' + completed + '</b>' +
+      '</div>' +
+      '<div style="background:#1f2937;border-radius:999px;height:18px;overflow:hidden;">' +
+        '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;' +
+        'border-radius:999px;transition:width 0.5s;display:flex;align-items:center;' +
+        'justify-content:center;color:white;font-size:11px;font-weight:600;">' +
+          pct + '%' +
+        '</div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:12px;color:#9ca3af;">' +
+        'In progress: <b>' + inProgress + '</b> trips' +
+      '</div>';
+  }
+
+  // ==== bottom panel: Performance vs Target ====
+  const perfPanel = document.getElementById('projectPerformance');
+  if (!perfPanel) return;
+
+  // simple summary
+  let summaryHtml =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+      '<div>' +
+        '<div style="color:#9ca3af;font-size:11px;">Planned trips</div>' +
+        '<div style="font-weight:600;">' + plannedTotal + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div style="color:#9ca3af;font-size:11px;">Completed</div>' +
+        '<div style="font-weight:600;color:#22c55e;">' + completed + '</div>' +
+      '</div>' +
+    '</div>';
+
+  // hourly timeline bars from simple.tripsSummary.hourlyCompleted
+  const hourly = sum.hourlyCompleted || {};
+  const hours = Object.keys(hourly).sort((a, b) => {
+    const ha = parseInt(a, 10);
+    const hb = parseInt(b, 10);
+    return ha - hb;
+  });
+
+  if (hours.length > 0) {
+    summaryHtml +=
+      '<div style="margin-top:10px;font-size:11px;color:#9ca3af;">Hourly completed trips</div>' +
+      '<div style="margin-top:4px;">';
+
+    const maxVal = Math.max(...hours.map(h => hourly[h]));
+    hours.forEach(h => {
+      const val = hourly[h];
+      const width = maxVal > 0 ? (val / maxVal) * 100 : 0;
+      summaryHtml +=
+        '<div style="display:flex;align-items:center;margin-bottom:4px;font-size:12px;">' +
+          '<span style="width:42px;">' + h + '</span>' +
+          '<div style="flex:1;background:#111827;border-radius:999px;height:8px;overflow:hidden;margin:0 8px;">' +
+            '<div style="height:100%;width:' + width + '%;background:#3b82f6;"></div>' +
+          '</div>' +
+          '<span style="width:24px;text-align:right;">' + val + '</span>' +
+        '</div>';
+    });
+
+    summaryHtml += '</div>';
+  } else {
+    summaryHtml +=
+      '<div style="margin-top:10px;font-size:12px;color:#6b7280;">No completed trips yet today.</div>';
+  }
+
+  perfPanel.innerHTML = summaryHtml;
+}
+
 
 // ===== UPDATE UI =====
 function updateDeliveryUI(data) {
