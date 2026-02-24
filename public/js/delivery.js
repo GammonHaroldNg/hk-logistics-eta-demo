@@ -113,7 +113,7 @@ function updateOverviewFromSimple(simple) {
 
   const barColor = pct < 100 ? '#3b82f6' : '#22c55e';
 
-  // ==== top card: Concrete Delivery Overview ====
+  // ==== top card ====
   const overviewCard = document.querySelector('#projectPanel .eta-info');
   if (overviewCard) {
     overviewCard.classList.add('active');
@@ -138,58 +138,97 @@ function updateOverviewFromSimple(simple) {
       '</div>';
   }
 
-  // ==== bottom panel: Performance vs Target ====
+  // ==== bottom panel: 2-row planned vs actual timeline ====
   const perfPanel = document.getElementById('projectPerformance');
   if (!perfPanel) return;
 
-  // simple summary
-  let summaryHtml =
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
-      '<div>' +
-        '<div style="color:#9ca3af;font-size:11px;">Planned trips</div>' +
-        '<div style="font-weight:600;">' + plannedTotal + '</div>' +
-      '</div>' +
-      '<div>' +
-        '<div style="color:#9ca3af;font-size:11px;">Completed</div>' +
-        '<div style="font-weight:600;color:#22c55e;">' + completed + '</div>' +
-      '</div>' +
-    '</div>';
-
-  // hourly timeline bars from simple.tripsSummary.hourlyCompleted
-  const hourly = sum.hourlyCompleted || {};
-  const hours = Object.keys(hourly).sort((a, b) => {
-    const ha = parseInt(a, 10);
-    const hb = parseInt(b, 10);
-    return ha - hb;
-  });
-
-  if (hours.length > 0) {
-    summaryHtml +=
-      '<div style="margin-top:10px;font-size:11px;color:#9ca3af;">Hourly completed trips</div>' +
-      '<div style="margin-top:4px;">';
-
-    const maxVal = Math.max(...hours.map(h => hourly[h]));
-    hours.forEach(h => {
-      const val = hourly[h];
-      const width = maxVal > 0 ? (val / maxVal) * 100 : 0;
-      summaryHtml +=
-        '<div style="display:flex;align-items:center;margin-bottom:4px;font-size:12px;">' +
-          '<span style="width:42px;">' + h + '</span>' +
-          '<div style="flex:1;background:#111827;border-radius:999px;height:8px;overflow:hidden;margin:0 8px;">' +
-            '<div style="height:100%;width:' + width + '%;background:#3b82f6;"></div>' +
-          '</div>' +
-          '<span style="width:24px;text-align:right;">' + val + '</span>' +
-        '</div>';
-    });
-
-    summaryHtml += '</div>';
-  } else {
-    summaryHtml +=
-      '<div style="margin-top:10px;font-size:12px;color:#6b7280;">No completed trips yet today.</div>';
+  const buckets = sum.hourlyTimeline || [];
+  if (!buckets.length) {
+    perfPanel.innerHTML =
+      '<div style="font-size:12px;color:#6b7280;">No trips completed yet today.</div>';
+    return;
   }
 
-  perfPanel.innerHTML = summaryHtml;
+  const startHour = buckets[0].hour;
+  const endHour = buckets[buckets.length - 1].hour;
+
+  // total deficit up to now
+  let totalPlanned = 0;
+  let totalActual = 0;
+  buckets.forEach(b => {
+    totalPlanned += b.planned;
+    totalActual += b.actual;
+  });
+  const shortfall = Math.max(0, totalPlanned - totalActual);
+
+  let warningHtml = '';
+  if (shortfall > 0) {
+    warningHtml =
+      '<div style="margin-top:10px;padding:8px;background:#fef2f2;border:1px solid #fecaca;' +
+      'border-radius:6px;font-size:12px;color:#dc2626;">' +
+        '⚠️ Behind schedule: <b>' + shortfall + '</b> trips below plan so far' +
+      '</div>';
+  } else if (totalActual > 0) {
+    warningHtml =
+      '<div style="margin-top:10px;padding:8px;background:#022c22;border:1px solid #16a34a;' +
+      'border-radius:6px;font-size:12px;color:#bbf7d0;">' +
+        '✅ On or above schedule based on completed trips' +
+      '</div>';
+  }
+
+  function buildRow(label, type) {
+    const totalHours = endHour - startHour + 1;
+    let rowHtml =
+      '<div class="timeline-row">' +
+        '<div class="timeline-label">' + label + '</div>' +
+        '<div class="timeline-track">';
+
+    for (let h = startHour; h <= endHour; h++) {
+      const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
+      const widthPct = (1 / totalHours) * 100;
+
+      if (type === 'planned') {
+        rowHtml +=
+          '<div class="timeline-hour planned" ' +
+          'style="left:' + ((h - startHour) / totalHours * 100) +
+          '%;width:' + widthPct + '%;">' +
+            (bucket.planned || 0) +
+          '</div>';
+      } else {
+        const planned = bucket.planned || plan.trucksPerHour;
+        const actual = bucket.actual || 0;
+        const cls = actual >= planned ? 'actual-ok' : 'actual-miss';
+        const text = actual + '/' + planned;
+
+        rowHtml +=
+          '<div class="timeline-hour ' + cls + '" ' +
+          'style="left:' + ((h - startHour) / totalHours * 100) +
+          '%;width:' + widthPct + '%;">' +
+            text +
+          '</div>';
+      }
+    }
+
+    // current time marker
+    const now = new Date();
+    const nowHour = now.getHours() + now.getMinutes() / 60;
+    if (nowHour >= startHour && nowHour <= endHour) {
+      const posPct = ((nowHour - startHour) / (endHour - startHour)) * 100;
+      rowHtml += '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
+    }
+
+    rowHtml += '</div></div>';
+    return rowHtml;
+  }
+
+  const html =
+    buildRow('Planned', 'planned') +
+    buildRow('Actual', 'actual') +
+    warningHtml;
+
+  perfPanel.innerHTML = html;
 }
+
 
 
 // ===== UPDATE UI =====

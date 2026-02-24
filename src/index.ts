@@ -745,18 +745,44 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         ? Math.round((completedTrips.length / plannedTripsTotal) * 100)
         : 0;
 
-    // 5) Optional hourly breakdown (by arrival hour in HK time)
-    const hourly: Record<string, number> = {};
+    // 5) Build per-hour planned + actual (HK time)
+    type HourBucket = { hour: number; planned: number; actual: number };
+
+    const buckets: Record<number, HourBucket> = {};
+
+    // Planned windows: from workStart to workEnd (integer hours)
+    const [shRaw] = plan.workStart.split(':');
+    const [ehRaw] = plan.workEnd.split(':');
+    const startHour = Number(shRaw ?? 8);
+    const endHour = Number(ehRaw ?? 23); // exclusive upper bound
+
+    for (let h = startHour; h < endHour; h++) {
+      buckets[h] = {
+        hour: h,
+        planned: plan.trucksPerHour,
+        actual: 0,
+      };
+    }
+
+    // Fill actual completed trips per hour from actual_arrival_at
     for (const t of completedTrips) {
       if (!t.actual_arrival_at) continue;
+
       const hkHourSql = `
         select extract(hour from ($1::timestamptz at time zone 'Asia/Hong_Kong')) as h
       `;
       const r = await query(hkHourSql, [t.actual_arrival_at]);
-      const h = r.rows[0].h as number;
-      const key = `${h}:00`;
-      hourly[key] = (hourly[key] || 0) + 1;
+      const h: number = r.rows[0].h;
+
+      if (!buckets[h]) {
+        // If completion falls outside planned window, still track it
+        buckets[h] = { hour: h, planned: 0, actual: 0 };
+      }
+      buckets[h].actual += 1;
     }
+
+    // Sort buckets into an array
+    const hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
 
     res.json({
       ok: true,
@@ -773,9 +799,10 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         completedCount: completedTrips.length,
         inProgressCount: inProgressTrips.length,
         percentComplete,
-        hourlyCompleted: hourly,
+        hourlyTimeline,          // NEW: [{hour, planned, actual}]
       },
     });
+
   } catch (err: any) {
     console.error('Error in /api/delivery/simple-status:', err);
     res.status(500).json({ ok: false, error: String(err) });
