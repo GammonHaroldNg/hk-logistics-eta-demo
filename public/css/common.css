@@ -33,9 +33,10 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  margin: 12px;              /* add spacing so dark bg is visible */
-  border-radius: 8px;        /* optional, to get a card feel */
+  margin: 12px;
+  border-radius: 8px;
   overflow: hidden;
+  background: #ffffff;      /* explicit card background */
 }
 
 /* Optional: remove the old top header bar look */
@@ -121,7 +122,24 @@ main {
 }
 
 #map {
-  position: relative;
+  flex: 3;
+  background: rgb(33, 40, 48);
+}
+
+.stats-panel {
+  flex: 1;
+  background: rgb(33, 40, 48);
+  border-left: 1px solid #4b5563;
+  color: #e5e7eb;
+}
+
+.stat-item {
+  background: #111827;
+}
+
+.performance-timeline {
+  background: rgb(33, 40, 48);
+  border-top: 1px solid #4b5563;
 }
 
 .map-controls {
