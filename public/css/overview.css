@@ -66,29 +66,29 @@ main {
   color: #ef4444;
 }
 
-.route-list {
-  padding: 8px;
+/* ROUTE LIST CONTAINER */
+.route-list-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 10px 0;
+  border: 1px solid #4b5563;
+  border-radius: 8px;
+  background: #111827;               /* was #f9fafb */
 }
 
-.route-list h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  color: #1f2937;
+.route-list h3,
+.route-id {
+  color: #f9fafb;                    /* light text */
 }
 
 .route-item {
-  padding: 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  margin-bottom: 8px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.2s;
+  border: 1px solid #4b5563;
+  background: #111827;
 }
 
 .route-item:hover {
-  background: #f9fafb;
+  background: #1f2937;
   border-color: #3b82f6;
 }
 
