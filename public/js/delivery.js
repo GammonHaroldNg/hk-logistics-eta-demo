@@ -195,6 +195,7 @@ function updateDeliveryUI(data) {
   var avgTravel = log.length > 0
     ? (log.reduce(function (s, r) { return s + r.travelTimeMinutes; }, 0) / log.length).toFixed(1)
     : '-';
+  var tp = data.throughput;
 
   var hourlyHtml = '';
   if (tp.hourlyBreakdown && tp.hourlyBreakdown.length > 0) {
@@ -232,6 +233,77 @@ function updateDeliveryUI(data) {
             '</div></div>'
         : '') +
       hourlyHtml;
+      // Build hourly timeline 08–23
+      var startHour = 8;
+      var endHour = 23; // extend if there is delay below
+
+      // If there is a delay that pushes eta beyond 23:00, extend the bar
+      if (data.progress && data.progress.estimatedCompletion) {
+        var eta = new Date(data.progress.estimatedCompletion);
+        var etaHour = eta.getHours();
+        if (etaHour > endHour) endHour = etaHour;
+      }
+
+      // Map hourlyBreakdown by hour for quick look‑up
+      var breakdownMap = {};
+      if (tp.hourlyBreakdown && tp.hourlyBreakdown.length) {
+        tp.hourlyBreakdown.forEach(function (h) {
+          breakdownMap[h.hour] = h;
+        });
+      }
+
+      // Helper to build one track row (planned or actual)
+      function buildTimelineRow(label, type) {
+        var totalHours = endHour - startHour + 1;
+        var rowHtml = '<div class="timeline-row">' +
+          '<div class="timeline-label">' + label + '</div>' +
+          '<div class="timeline-track">';
+
+        for (var h = startHour; h <= endHour; h++) {
+          var info = breakdownMap[h] || { target: tp.targetRate || 0, actual: 0 };
+          var widthPct = (1 / totalHours) * 100;
+          var hourLabel = (h < 10 ? "0" + h : h) + ":00";
+
+          if (type === "planned") {
+            rowHtml +=
+              '<div class="timeline-hour planned" ' +
+              'style="left:' + ((h - startHour) / totalHours * 100) +
+              '%; width:' + widthPct + '%;">' +
+              (info.target || tp.targetRate || 0) +
+              "</div>";
+          } else {
+            var cls =
+              info.actual >= info.target ? "actual-ok" : "actual-miss";
+            var text = (info.actual || 0) + "/" + (info.target || tp.targetRate || 0);
+            rowHtml +=
+              '<div class="timeline-hour ' + cls + '" ' +
+              'style="left:' + ((h - startHour) / totalHours * 100) +
+              '%; width:' + widthPct + '%;">' +
+              text +
+              "</div>";
+          }
+        }
+
+        // Current time marker
+        var now = new Date();
+        var nowHour = now.getHours() + now.getMinutes() / 60;
+        if (nowHour >= startHour && nowHour <= endHour) {
+          var posPct = ((nowHour - startHour) / (endHour - startHour)) * 100;
+          rowHtml +=
+            '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
+        }
+
+        rowHtml += "</div></div>";
+        return rowHtml;
+      }
+
+      var timelineHtml = "";
+      timelineHtml += buildTimelineRow("Planned", "planned");
+      timelineHtml += buildTimelineRow("Actual", "actual");
+
+      if (perfPanel) {
+        perfPanel.innerHTML = timelineHtml;
+      }
   }
 
 
