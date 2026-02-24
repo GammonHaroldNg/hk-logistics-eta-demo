@@ -23,6 +23,20 @@ html, body {
   color: #e5e7eb;
 }
 
+.title-accent-bar {
+  height: 3px;  /* about 3pt */
+  width: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg,
+    #f97316,  /* orange */
+    #facc15,  /* yellow */
+    #22c55e,  /* green */
+    #3b82f6,  /* blue */
+    #a855f7   /* purple */
+  );
+  margin: 0 0 16px;
+}
+
 
 body {
   display: flex;
