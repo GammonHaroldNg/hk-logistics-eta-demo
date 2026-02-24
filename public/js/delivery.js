@@ -12,53 +12,7 @@ let lastNonEmptyTruckList = [];
 // ===== RENDER CONFIG FORM =====
 function renderDeliveryForm() {
   const container = document.getElementById('projectRouteInfo');
-  container.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <div style="padding:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;">
-        <div style="font-size:12px;color:#0369a1;font-weight:600;margin-bottom:4px;">📍 Full Project Corridor</div>
-        <div style="font-size:11px;color:#6b7280;">
-          Concrete Plant (S) → Construction Site (E)<br>
-          All 92 segments · Speed capped at 60 km/h
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        <div>
-          <label style="font-size:12px;color:#6b7280;">Target Volume (m³)</label>
-          <input id="deliveryTarget" type="number" value="600" min="1"
-            style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:#6b7280;">Per Truck (m³)</label>
-          <input id="deliveryPerTruck" type="number" value="8" min="1" max="20"
-            style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:#6b7280;">Trucks/Hour Target</label>
-          <input id="deliveryFrequency" type="number" value="12" min="1" max="30"
-            style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
-        </div>
-        <div>
-          <label style="font-size:12px;color:#6b7280;">Default Speed (km/h)</label>
-          <input id="deliverySpeed" type="number" value="40" min="5" max="60"
-            style="width:100%;padding:6px;border:1px solid #e5e7eb;border-radius:4px;font-size:13px;">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button id="btnStartDelivery" onclick="startDelivery()"
-          style="flex:1;padding:8px;background:#22c55e;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;">
-          ▶ Start Delivery
-        </button>
-        <button id="btnStopDelivery" onclick="stopDeliverySession()"
-          style="flex:1;padding:8px;background:#ef4444;color:white;border:none;border-radius:6px;font-weight:600;cursor:pointer;display:none;">
-          ⏹ Stop
-        </button>
-        <button onclick="resetDeliverySession()"
-          style="padding:8px 12px;background:#6b7280;color:white;border:none;border-radius:6px;cursor:pointer;">
-          ↺
-        </button>
-      </div>
-    </div>
-  `;
+  container.innerHTML = 'Waiting for live delivery data...';
 }
 
 // ===== START =====
@@ -144,50 +98,48 @@ async function pollDeliveryStatus() {
 
 // ===== UPDATE UI =====
 function updateDeliveryUI(data) {
-  var p = data.progress;
-  var c = data.config;
+  var p  = data.progress;
+  var c  = data.config;
   var tp = data.throughput;
   var pct = p.percentComplete;
   var barColor = tp.behindSchedule ? '#ef4444' : '#22c55e';
 
-  // --- Progress + Throughput (top card) ---
-  var throughputHtml = '';
+  // mark card as active
+  var overviewCard = document.querySelector('#projectPanel .eta-info');
+  if (overviewCard) {
+    overviewCard.classList.add('active');
+    overviewCard.classList.remove('inactive');
+  }
+
+  // --- Concrete Delivery Overview (no corridor text, no buttons) ---
+  var warningHtml = '';
   if (tp.behindSchedule) {
-    throughputHtml =
-      '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#dc2626;">' +
+    warningHtml =
+      '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;' +
+      'border-radius:6px;font-size:12px;color:#dc2626;">' +
         '⚠️ Behind schedule: <b>' + tp.windowActual + '/' + tp.windowTarget + '</b> trucks this hour' +
         (tp.delayMinutes > 0 ? ' · Projected delay: <b>+' + tp.delayMinutes + ' min</b>' : '') +
       '</div>';
   } else if (tp.actualRate > 0) {
-    throughputHtml =
-      '<div style="margin-top:8px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;color:#166534;">' +
-        '✅ On schedule: <b>' + tp.actualRate + '</b> trucks/hr (target: ' + tp.targetRate + ')' +
+    warningHtml =
+      '<div style="margin-top:8px;padding:8px;background:#022c22;border:1px solid #16a34a;' +
+      'border-radius:6px;font-size:12px;color:#bbf7d0;">' +
+        '✅ On schedule this hour' +
       '</div>';
   }
 
   document.getElementById('projectRouteInfo').innerHTML =
-    '<div style="margin-bottom:12px;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:4px;">' +
-        '<span>Corridor · ' + c.totalDistance + ' km</span>' +
-        '<span>' + p.delivered + ' / ' + c.targetVolume + ' m³</span>' +
-      '</div>' +
-      '<div style="background:#e5e7eb;border-radius:8px;height:20px;overflow:hidden;">' +
-        '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;border-radius:8px;transition:width 0.5s;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:600;">' +
-          pct + '%' +
-        '</div>' +
+    '<div style="margin-bottom:10px;font-size:12px;color:#9ca3af;">' +
+      'Daily target: <b>' + c.targetVolume + ' m³</b> · Delivered: <b>' + p.delivered + ' m³</b>' +
+    '</div>' +
+    '<div style="background:#1f2937;border-radius:999px;height:18px;overflow:hidden;">' +
+      '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;' +
+      'border-radius:999px;transition:width 0.5s;display:flex;align-items:center;' +
+      'justify-content:center;color:white;font-size:11px;font-weight:600;">' +
+        pct + '%' +
       '</div>' +
     '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;">' +
-      '<div><span style="color:#6b7280;">En Route:</span> <b>' + p.trucksEnRoute + '</b></div>' +
-      '<div><span style="color:#6b7280;">Arrived:</span> <b>' + p.trucksCompleted + '</b></div>' +
-      '<div><span style="color:#6b7280;">Waiting:</span> <b>' + p.trucksWaiting + '</b></div>' +
-      '<div><span style="color:#6b7280;">Rate:</span> <b>' + tp.actualRate + '</b>/hr</div>' +
-    '</div>' +
-    throughputHtml +
-    '<div style="margin-top:8px;display:flex;gap:8px;">' +
-      '<button onclick="stopDeliverySession()" style="flex:1;padding:6px;background:#ef4444;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer;">⏹ Stop</button>' +
-      '<button onclick="resetDeliverySession()" style="padding:6px 10px;background:#6b7280;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer;">↺ Reset</button>' +
-    '</div>';
+    warningHtml;
 
   // --- Performance panel (bottom / timeline) ---
   var perfPanel = document.getElementById('projectPerformance');
@@ -198,11 +150,16 @@ function updateDeliveryUI(data) {
 
   var summaryHtml =
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
-      '<div><div style="color:#6b7280;font-size:11px;">Target</div><div style="font-weight:600;">' + c.targetVolume + ' m³</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Delivered</div><div style="font-weight:600;color:#22c55e;">' + p.delivered + ' m³</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Avg Travel</div><div style="font-weight:600;">' + avgTravel + ' min</div></div>' +
-      '<div><div style="color:#6b7280;font-size:11px;">Throughput</div><div style="font-weight:600;color:' + (tp.behindSchedule ? '#ef4444' : '#22c55e') + ';">' + tp.actualRate + '/hr</div></div>' +
+      '<div>' +
+        '<div style="color:#9ca3af;font-size:11px;">En route</div>' +
+        '<div style="font-weight:600;">' + p.trucksEnRoute + '</div>' +
+      '</div>' +
+      '<div>' +
+        '<div style="color:#9ca3af;font-size:11px;">Arrived</div>' +
+        '<div style="font-weight:600;">' + p.trucksCompleted + '</div>' +
+      '</div>' +
     '</div>';
+
 
   if (p.estimatedCompletion) {
     summaryHtml +=
