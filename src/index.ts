@@ -373,6 +373,7 @@ async function loadTodayTruckPlan() {
   const workStart = row.work_start_hour as string; // '08:00:00'
   const workEnd   = row.work_end_hour as string;   // '23:00:00'
   const trucksPerHour = Number(row.planned_trucks_per_hour) || 0;
+  const targetVolume = Number(row.target_concrete_volume) || 0;  // <-- add this
 
   const [shRaw, smRaw] = workStart.split(':');
   const [ehRaw, emRaw] = workEnd.split(':');
@@ -393,6 +394,7 @@ async function loadTodayTruckPlan() {
     workingHours,
     workStart,
     workEnd,
+    targetVolume,                      // now defined
   };
 }
 
@@ -754,7 +756,7 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     const [shRaw] = plan.workStart.split(':');
     const [ehRaw] = plan.workEnd.split(':');
     const startHour = Number(shRaw ?? 8);
-    const endHour = Number(ehRaw ?? 23); // exclusive upper bound
+    const endHour = Number(ehRaw ?? 23); // exclusive
 
     for (let h = startHour; h < endHour; h++) {
       buckets[h] = {
@@ -767,7 +769,6 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     // Fill actual completed trips per hour from actual_arrival_at
     for (const t of completedTrips) {
       if (!t.actual_arrival_at) continue;
-
       const hkHourSql = `
         select extract(hour from ($1::timestamptz at time zone 'Asia/Hong_Kong')) as h
       `;
@@ -775,14 +776,35 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
       const h: number = r.rows[0].h;
 
       if (!buckets[h]) {
-        // If completion falls outside planned window, still track it
         buckets[h] = { hour: h, planned: 0, actual: 0 };
       }
       buckets[h].actual += 1;
     }
 
-    // Sort buckets into an array
-    const hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
+    let hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
+
+    // cumulative shortfall
+    let totalPlanned = 0;
+    let totalActual = 0;
+    hourlyTimeline.forEach(b => {
+      totalPlanned += b.planned;
+      totalActual += b.actual;
+    });
+    const totalShortfall = Math.max(0, totalPlanned - totalActual);
+
+    // If still behind, add one delay bucket at endHour+1
+    if (totalShortfall > 0 && hourlyTimeline.length > 0) {
+      const last = hourlyTimeline[hourlyTimeline.length - 1];
+      if (last) {
+        const lastHour = last.hour;
+        hourlyTimeline.push({
+          hour: lastHour + 1,
+          planned: 0,
+          actual: -totalShortfall,
+        });
+      }
+    }
+
 
     res.json({
       ok: true,
@@ -794,14 +816,17 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         trucksPerHour: plan.trucksPerHour,
         workingHours: plan.workingHours,
         plannedTripsTotal,
+        targetVolume: plan.targetVolume,          // from loadTodayTruckPlan
       },
       tripsSummary: {
         completedCount: completedTrips.length,
         inProgressCount: inProgressTrips.length,
         percentComplete,
-        hourlyTimeline,          // NEW: [{hour, planned, actual}]
+        hourlyTimeline,
+        totalShortfall,
       },
     });
+
 
   } catch (err: any) {
     console.error('Error in /api/delivery/simple-status:', err);

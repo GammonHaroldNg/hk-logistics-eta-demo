@@ -92,6 +92,7 @@ async function pollDeliveryStatus() {
 
     // trucks still from sim
     updateTruckMarkers(simData.trucks || []);
+    updateTruckListFromSim(simData);
 
     // overview + timeline from simple backend logic
     if (simpleData.ok && simpleData.hasPlan) {
@@ -110,6 +111,7 @@ function updateOverviewFromSimple(simple) {
   const completed = sum.completedCount;
   const inProgress = sum.inProgressCount;
   const plannedTotal = plan.plannedTripsTotal;
+  const dailyTarget = plan.targetVolume || 0;
 
   const barColor = pct < 100 ? '#3b82f6' : '#22c55e';
 
@@ -120,22 +122,40 @@ function updateOverviewFromSimple(simple) {
     overviewCard.classList.remove('inactive');
   }
 
+  const shortfallTop = sum.totalShortfall || 0;
+  let warningHtmlTop = '';
+  if (shortfallTop > 0) {
+    warningHtmlTop =
+      '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;' +
+      'border-radius:6px;font-size:12px;color:#dc2626;">' +
+        '⚠️ Behind schedule: <b>' + shortfallTop + '</b> trips below plan so far' +
+      '</div>';
+  } else if (completed > 0) {
+    warningHtmlTop =
+      '<div style="margin-top:8px;padding:8px;background:#022c22;border:1px solid #16a34a;' +
+      'border-radius:6px;font-size:12px;color:#bbf7d0;">' +
+        '✅ On or above schedule based on completed trips' +
+      '</div>';
+  }
+
   const infoEl = document.getElementById('projectRouteInfo');
   if (infoEl) {
     infoEl.innerHTML =
-      '<div style="margin-bottom:10px;font-size:12px;color:#9ca3af;">' +
-        'Today plan: <b>' + plannedTotal + ' trips</b> · Completed: <b>' + completed + '</b>' +
+      '<div style="margin-bottom:10px;font-size:12px;color:#d1d5db;">' +
+        'Today plan: <b>' + plannedTotal + ' trips</b> · Completed: <b>' + completed + '</b><br>' +
+        'Target concrete: <b>' + dailyTarget + ' m³</b>' +
       '</div>' +
       '<div style="background:#1f2937;border-radius:999px;height:18px;overflow:hidden;">' +
         '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;' +
         'border-radius:999px;transition:width 0.5s;display:flex;align-items:center;' +
-        'justify-content:center;color:white;font-size:11px;font-weight:600;">' +
+        'justify-content:center;color:#0b1120;font-size:11px;font-weight:600;">' +
           pct + '%' +
         '</div>' +
       '</div>' +
-      '<div style="margin-top:8px;font-size:12px;color:#9ca3af;">' +
+      '<div style="margin-top:8px;font-size:12px;color:#d1d5db;">' +
         'In progress: <b>' + inProgress + '</b> trips' +
-      '</div>';
+      '</div>' +
+      warningHtmlTop;
   }
 
   // ==== bottom panel: 2-row planned vs actual timeline ====
@@ -152,29 +172,20 @@ function updateOverviewFromSimple(simple) {
   const startHour = buckets[0].hour;
   const endHour = buckets[buckets.length - 1].hour;
 
-  // total deficit up to now
-  let totalPlanned = 0;
-  let totalActual = 0;
-  buckets.forEach(b => {
-    totalPlanned += b.planned;
-    totalActual += b.actual;
-  });
-  const shortfall = Math.max(0, totalPlanned - totalActual);
-
-  let warningHtml = '';
-  if (shortfall > 0) {
-    warningHtml =
-      '<div style="margin-top:10px;padding:8px;background:#fef2f2;border:1px solid #fecaca;' +
-      'border-radius:6px;font-size:12px;color:#dc2626;">' +
-        '⚠️ Behind schedule: <b>' + shortfall + '</b> trips below plan so far' +
-      '</div>';
-  } else if (totalActual > 0) {
-    warningHtml =
-      '<div style="margin-top:10px;padding:8px;background:#022c22;border:1px solid #16a34a;' +
-      'border-radius:6px;font-size:12px;color:#bbf7d0;">' +
-        '✅ On or above schedule based on completed trips' +
-      '</div>';
+  // Hour labels row
+  function formatHourLabel(h) {
+    const hour = ((h % 24) + 24) % 24;
+    const suffix = hour < 12 ? 'am' : 'pm';
+    const display = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return display + ' ' + suffix;
   }
+
+  let hourMarksHtml =
+    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
+  for (let h = startHour; h <= endHour; h++) {
+    hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
+  }
+  hourMarksHtml += '</div>';
 
   function buildRow(label, type) {
     const totalHours = endHour - startHour + 1;
@@ -182,6 +193,9 @@ function updateOverviewFromSimple(simple) {
       '<div class="timeline-row">' +
         '<div class="timeline-label">' + label + '</div>' +
         '<div class="timeline-track">';
+
+    const now = new Date();
+    const nowHourInt = now.getHours();
 
     for (let h = startHour; h <= endHour; h++) {
       const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
@@ -195,10 +209,31 @@ function updateOverviewFromSimple(simple) {
             (bucket.planned || 0) +
           '</div>';
       } else {
-        const planned = bucket.planned || plan.trucksPerHour;
-        const actual = bucket.actual || 0;
-        const cls = actual >= planned ? 'actual-ok' : 'actual-miss';
-        const text = actual + '/' + planned;
+        const isFuture = h > nowHourInt;
+        let planned = bucket.planned || plan.trucksPerHour;
+        let actual = bucket.actual || 0;
+        let text = '';
+        let cls = 'actual-ok';
+
+        // Delay bucket: planned 0, actual negative => 0/delayCount
+        if (planned === 0 && actual < 0) {
+          const delayCount = Math.abs(actual);
+          planned = delayCount;
+          actual = 0;
+          text = '0/' + delayCount;
+          cls = 'actual-miss';
+        } else {
+          text = actual + '/' + planned;
+          if (isFuture) {
+            cls = 'actual-future';
+          } else if (actual < planned) {
+            cls = 'actual-miss';
+          } else if (actual > planned) {
+            cls = 'actual-fast';
+          } else {
+            cls = 'actual-ok';
+          }
+        }
 
         rowHtml +=
           '<div class="timeline-hour ' + cls + '" ' +
@@ -209,11 +244,10 @@ function updateOverviewFromSimple(simple) {
       }
     }
 
-    // current time marker
-    const now = new Date();
-    const nowHour = now.getHours() + now.getMinutes() / 60;
-    if (nowHour >= startHour && nowHour <= endHour) {
-      const posPct = ((nowHour - startHour) / (endHour - startHour)) * 100;
+    // Current time marker line
+    const nowFloat = now.getHours() + now.getMinutes() / 60;
+    if (nowFloat >= startHour && nowFloat <= endHour) {
+      const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
       rowHtml += '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
     }
 
@@ -222,11 +256,51 @@ function updateOverviewFromSimple(simple) {
   }
 
   const html =
+    hourMarksHtml +
     buildRow('Planned', 'planned') +
-    buildRow('Actual', 'actual') +
-    warningHtml;
+    buildRow('Actual', 'actual');
 
   perfPanel.innerHTML = html;
+}
+
+// === Truck list, separate helper ===
+function updateTruckListFromSim(data) {
+  var truckList = document.getElementById('projectVehicleList');
+  if (!truckList) return;
+
+  var trucks = data.trucks || [];
+
+  if (trucks.length === 0) {
+    truckList.innerHTML =
+      '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
+  } else {
+    truckList.innerHTML = trucks.map(function (t) {
+      var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
+      var statusIcon = t.status === 'en-route' ? '🚛' : '✅';
+      var etaStr = t.status === 'en-route'
+        ? new Date(t.estimatedArrival).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' })
+        : new Date(t.arrivalTime).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
+      var remainSec = 0;
+      if (t.status === 'en-route') {
+        remainSec = Math.max(0, Math.round((new Date(t.estimatedArrival).getTime() - Date.now()) / 1000));
+      }
+      var remainMin = Math.round(remainSec / 60);
+      var travelMin = Math.round(t.elapsedSeconds / 60);
+
+      return '<div class="vehicle-item" style="border-left:3px solid ' + statusColor + ';">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span class="vehicle-item-id">' + statusIcon + ' ' + t.truckId + '</span>' +
+          '<span style="font-size:11px;padding:2px 6px;border-radius:3px;background:' + statusColor + '20;color:' + statusColor + ';">' +
+            (t.status === 'en-route' ? t.progress + '%' : 'Arrived') +
+          '</span>' +
+        '</div>' +
+        '<div class="vehicle-item-eta">' +
+          (t.status === 'en-route'
+            ? remainMin + ' min left · Arriving: ' + etaStr
+            : 'Arrived: ' + etaStr + ' · ' + travelMin + ' min trip · ' + t.concreteVolume + 'm³') +
+        '</div></div>';
+    }).join('');
+  }
 }
 
 
@@ -331,42 +405,6 @@ function updateDeliveryUI(data) {
 
   if (perfPanel) {
     perfPanel.innerHTML = summaryHtml + hourlyHtml + timelineHtml;
-  }
-
-  // --- Truck list (active concrete vehicles) ---
-  var truckList = document.getElementById('projectVehicleList');
-  var trucks = data.trucks || [];   // <-- this line is required
-
-  if (trucks.length === 0) {
-    truckList.innerHTML =
-      '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
-  } else {
-    truckList.innerHTML = trucks.map(function (t) {
-      var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
-      var statusIcon = t.status === 'en-route' ? '🚛' : '✅';
-      var etaStr = t.status === 'en-route'
-        ? new Date(t.estimatedArrival).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' })
-        : new Date(t.arrivalTime).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
-      var remainSec = 0;
-      if (t.status === 'en-route') {
-        remainSec = Math.max(0, Math.round((new Date(t.estimatedArrival).getTime() - Date.now()) / 1000));
-      }
-      var remainMin = Math.round(remainSec / 60);
-      var travelMin = Math.round(t.elapsedSeconds / 60);
-
-      return '<div class="vehicle-item" style="border-left:3px solid ' + statusColor + ';">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<span class="vehicle-item-id">' + statusIcon + ' ' + t.truckId + '</span>' +
-          '<span style="font-size:11px;padding:2px 6px;border-radius:3px;background:' + statusColor + '20;color:' + statusColor + ';">' +
-            (t.status === 'en-route' ? t.progress + '%' : 'Arrived') +
-          '</span>' +
-        '</div>' +
-        '<div class="vehicle-item-eta">' +
-          (t.status === 'en-route'
-            ? remainMin + ' min left · Arriving: ' + etaStr
-            : 'Arrived: ' + etaStr + ' · ' + travelMin + ' min trip · ' + t.concreteVolume + 'm³') +
-        '</div></div>';
-    }).join('');
   }
 }
 

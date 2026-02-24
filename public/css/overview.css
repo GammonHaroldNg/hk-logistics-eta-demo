@@ -362,3 +362,19 @@ main {
   background: #1f2937;
 }
 
+.timeline-hour.actual-ok {
+  background: #22c55e;      /* green */
+}
+
+.timeline-hour.actual-miss {
+  background: #ef4444;      /* red */
+}
+
+.timeline-hour.actual-fast {
+  background: #4ade80;      /* light green */
+}
+
+.timeline-hour.actual-future {
+  background: #4b5563;      /* grey */
+}
+
