@@ -33,10 +33,10 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  margin: 12px;
-  border-radius: 8px;
+  margin: 0;                 /* no outer card margin */
+  border-radius: 0;          /* no rounding */
   overflow: hidden;
-  background: #ffffff;      /* explicit card background */
+  background: rgb(33, 40, 48);  /* was #ffffff */
 }
 
 /* Optional: remove the old top header bar look */
