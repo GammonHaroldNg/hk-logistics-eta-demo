@@ -189,14 +189,36 @@ function updateDeliveryUI(data) {
       '<button onclick="resetDeliverySession()" style="padding:6px 10px;background:#6b7280;color:white;border:none;border-radius:4px;font-size:12px;cursor:pointer;">↺ Reset</button>' +
     '</div>';
 
-  // --- Performance panel (bottom card in side panel) ---
+  // --- Performance panel (bottom / timeline) ---
   var perfPanel = document.getElementById('projectPerformance');
   var log = data.deliveryLog || [];
   var avgTravel = log.length > 0
     ? (log.reduce(function (s, r) { return s + r.travelTimeMinutes; }, 0) / log.length).toFixed(1)
     : '-';
-  var tp = data.throughput;
 
+  var summaryHtml =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
+      '<div><div style="color:#6b7280;font-size:11px;">Target</div><div style="font-weight:600;">' + c.targetVolume + ' m³</div></div>' +
+      '<div><div style="color:#6b7280;font-size:11px;">Delivered</div><div style="font-weight:600;color:#22c55e;">' + p.delivered + ' m³</div></div>' +
+      '<div><div style="color:#6b7280;font-size:11px;">Avg Travel</div><div style="font-weight:600;">' + avgTravel + ' min</div></div>' +
+      '<div><div style="color:#6b7280;font-size:11px;">Throughput</div><div style="font-weight:600;color:' + (tp.behindSchedule ? '#ef4444' : '#22c55e') + ';">' + tp.actualRate + '/hr</div></div>' +
+    '</div>';
+
+  if (p.estimatedCompletion) {
+    summaryHtml +=
+      '<div style="margin-top:10px;padding:8px;background:' + (tp.behindSchedule ? '#fef2f2' : '#f0fdf4') +
+      ';border:1px solid ' + (tp.behindSchedule ? '#fecaca' : '#bbf7d0') + ';border-radius:6px;">' +
+        '<div style="font-size:11px;color:#6b7280;">Projected Completion</div>' +
+        '<div style="font-size:14px;font-weight:600;color:' + (tp.behindSchedule ? '#dc2626' : '#22c55e') + ';">' +
+          new Date(p.estimatedCompletion).toLocaleTimeString('en-HK') +
+          (tp.delayMinutes > 0
+            ? ' <span style="font-size:12px;font-weight:400;">(+' + tp.delayMinutes + ' min delay)</span>'
+            : ' <span style="font-size:12px;font-weight:400;">(on schedule)</span>') +
+        '</div>' +
+      '</div>';
+  }
+
+  // Optionally keep your old hourly text list under the cards
   var hourlyHtml = '';
   if (tp.hourlyBreakdown && tp.hourlyBreakdown.length > 0) {
     hourlyHtml = '<div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:8px;">' +
@@ -213,99 +235,11 @@ function updateDeliveryUI(data) {
     });
     hourlyHtml += '</div>';
   }
+  var timelineHtml = buildPerformanceTimeline(tp, p);
 
   if (perfPanel) {
-    perfPanel.innerHTML =
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;">' +
-        '<div><div style="color:#6b7280;font-size:11px;">Target</div><div style="font-weight:600;">' + c.targetVolume + ' m³</div></div>' +
-        '<div><div style="color:#6b7280;font-size:11px;">Delivered</div><div style="font-weight:600;color:#22c55e;">' + p.delivered + ' m³</div></div>' +
-        '<div><div style="color:#6b7280;font-size:11px;">Avg Travel</div><div style="font-weight:600;">' + avgTravel + ' min</div></div>' +
-        '<div><div style="color:#6b7280;font-size:11px;">Throughput</div><div style="font-weight:600;color:' + (tp.behindSchedule ? '#ef4444' : '#22c55e') + ';">' + tp.actualRate + '/hr</div></div>' +
-      '</div>' +
-      (p.estimatedCompletion
-        ? '<div style="margin-top:10px;padding:8px;background:' + (tp.behindSchedule ? '#fef2f2' : '#f0fdf4') + ';border:1px solid ' + (tp.behindSchedule ? '#fecaca' : '#bbf7d0') + ';border-radius:6px;">' +
-            '<div style="font-size:11px;color:#6b7280;">Projected Completion</div>' +
-            '<div style="font-size:14px;font-weight:600;color:' + (tp.behindSchedule ? '#dc2626' : '#22c55e') + ';">' +
-              new Date(p.estimatedCompletion).toLocaleTimeString('en-HK') +
-              (tp.delayMinutes > 0
-                ? ' <span style="font-size:12px;font-weight:400;">(+' + tp.delayMinutes + ' min delay)</span>'
-                : ' <span style="font-size:12px;font-weight:400;">(on schedule)</span>') +
-            '</div></div>'
-        : '') +
-      hourlyHtml;
-      // Build hourly timeline 08–23
-      var startHour = 8;
-      var endHour = 23; // extend if there is delay below
-
-      // If there is a delay that pushes eta beyond 23:00, extend the bar
-      if (data.progress && data.progress.estimatedCompletion) {
-        var eta = new Date(data.progress.estimatedCompletion);
-        var etaHour = eta.getHours();
-        if (etaHour > endHour) endHour = etaHour;
-      }
-
-      // Map hourlyBreakdown by hour for quick look‑up
-      var breakdownMap = {};
-      if (tp.hourlyBreakdown && tp.hourlyBreakdown.length) {
-        tp.hourlyBreakdown.forEach(function (h) {
-          breakdownMap[h.hour] = h;
-        });
-      }
-
-      // Helper to build one track row (planned or actual)
-      function buildTimelineRow(label, type) {
-        var totalHours = endHour - startHour + 1;
-        var rowHtml = '<div class="timeline-row">' +
-          '<div class="timeline-label">' + label + '</div>' +
-          '<div class="timeline-track">';
-
-        for (var h = startHour; h <= endHour; h++) {
-          var info = breakdownMap[h] || { target: tp.targetRate || 0, actual: 0 };
-          var widthPct = (1 / totalHours) * 100;
-          var hourLabel = (h < 10 ? "0" + h : h) + ":00";
-
-          if (type === "planned") {
-            rowHtml +=
-              '<div class="timeline-hour planned" ' +
-              'style="left:' + ((h - startHour) / totalHours * 100) +
-              '%; width:' + widthPct + '%;">' +
-              (info.target || tp.targetRate || 0) +
-              "</div>";
-          } else {
-            var cls =
-              info.actual >= info.target ? "actual-ok" : "actual-miss";
-            var text = (info.actual || 0) + "/" + (info.target || tp.targetRate || 0);
-            rowHtml +=
-              '<div class="timeline-hour ' + cls + '" ' +
-              'style="left:' + ((h - startHour) / totalHours * 100) +
-              '%; width:' + widthPct + '%;">' +
-              text +
-              "</div>";
-          }
-        }
-
-        // Current time marker
-        var now = new Date();
-        var nowHour = now.getHours() + now.getMinutes() / 60;
-        if (nowHour >= startHour && nowHour <= endHour) {
-          var posPct = ((nowHour - startHour) / (endHour - startHour)) * 100;
-          rowHtml +=
-            '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
-        }
-
-        rowHtml += "</div></div>";
-        return rowHtml;
-      }
-
-      var timelineHtml = "";
-      timelineHtml += buildTimelineRow("Planned", "planned");
-      timelineHtml += buildTimelineRow("Actual", "actual");
-
-      if (perfPanel) {
-        perfPanel.innerHTML = timelineHtml;
-      }
+    perfPanel.innerHTML = summaryHtml + hourlyHtml + timelineHtml;
   }
-
 
   // --- Truck list (active concrete vehicles) ---
   var truckList = document.getElementById('projectVehicleList');
@@ -342,6 +276,70 @@ function updateDeliveryUI(data) {
         '</div></div>';
     }).join('');
   }
+}
+
+function buildPerformanceTimeline(tp, progress) {
+  var startHour = 8;
+  var endHour = 23;
+
+  if (progress && progress.estimatedCompletion) {
+    var eta = new Date(progress.estimatedCompletion);
+    var etaHour = eta.getHours();
+    if (etaHour > endHour) endHour = etaHour;
+  }
+
+  var breakdownMap = {};
+  if (tp.hourlyBreakdown && tp.hourlyBreakdown.length) {
+    tp.hourlyBreakdown.forEach(function (h) {
+      breakdownMap[h.hour] = h;
+    });
+  }
+
+  function buildRow(label, type) {
+    var totalHours = endHour - startHour + 1;
+    var rowHtml = '<div class="timeline-row">' +
+      '<div class="timeline-label">' + label + '</div>' +
+      '<div class="timeline-track">';
+
+    for (var h = startHour; h <= endHour; h++) {
+      var info = breakdownMap[h] || { target: tp.targetRate || 0, actual: 0 };
+      var widthPct = (1 / totalHours) * 100;
+
+      if (type === 'planned') {
+        rowHtml +=
+          '<div class="timeline-hour planned" ' +
+          'style="left:' + ((h - startHour) / totalHours * 100) +
+          '%;width:' + widthPct + '%;">' +
+          (info.target || tp.targetRate || 0) +
+          '</div>';
+      } else {
+        var cls = info.actual >= info.target ? 'actual-ok' : 'actual-miss';
+        var text = (info.actual || 0) + '/' + (info.target || tp.targetRate || 0);
+        rowHtml +=
+          '<div class="timeline-hour ' + cls + '" ' +
+          'style="left:' + ((h - startHour) / totalHours * 100) +
+          '%;width:' + widthPct + '%;">' +
+          text +
+          '</div>';
+      }
+    }
+
+    var now = new Date();
+    var nowHour = now.getHours() + now.getMinutes() / 60;
+    if (nowHour >= startHour && nowHour <= endHour) {
+      var posPct = ((nowHour - startHour) / (endHour - startHour)) * 100;
+      rowHtml +=
+        '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
+    }
+
+    rowHtml += '</div></div>';
+    return rowHtml;
+  }
+
+  var html = '';
+  html += buildRow('Planned', 'planned');
+  html += buildRow('Actual', 'actual');
+  return html;
 }
 
 
