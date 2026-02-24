@@ -6,62 +6,47 @@ main {
   flex: 2;
 }
 
-/* Project simulation panel container */
+/* Make tracking side panel a column with gap */
 .tracking-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
   height: 100%;
-  color: #e5e7eb;
 }
 
-/* Cards inside panel */
+/* Each card (overview + vehicles) as separate blocks */
 .tracking-panel .eta-info,
 .tracking-panel .vehicle-list {
-  display: flex;
-  flex-direction: column;
-  max-height: 260px;          /* adjust as you like */
+  background: #111827;
+  border-radius: 12px;
+  border: 1px solid #4b5563;
+  padding: 12px 14px;
 }
 
-/* When simulation is “on” (we’ll toggle this class in JS) */
-.tracking-panel .eta-info.active {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59,130,246,0.3);
-}
-
-/* When simulation is “off” */
-.tracking-panel .eta-info.inactive {
-  border-color: #4b5563;
-  opacity: 0.7;
-}
-
-.tracking-panel h2 {
+/* Titles with spacing, no overlap */
+.tracking-panel .eta-info h2,
+.tracking-panel .vehicle-list h2 {
   font-size: 14px;
   margin: 0 0 8px;
   color: #f9fafb;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 4px;
 }
 
-
-.vehicle-list,
-.eta-info {
-  flex: 1;
+/* Make vehicle list scroll inside its own card */
+.vehicle-list {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-}
-
-.vehicle-list h2,
-.eta-info h2 {
-  font-size: 16px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
 }
 
 .vehicle-list-content {
-  margin-top: 6px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  margin-top: 4px;
 }
+
 
 .vehicle-item {
   padding: 12px;
