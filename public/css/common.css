@@ -19,9 +19,10 @@ html, body {
   width: 100%;
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: rgb(33, 40, 48);   /* dark background */
-  color: #e5e7eb;                /* light text */
+  background: rgb(33, 40, 48);
+  color: #e5e7eb;
 }
+
 
 body {
   display: flex;
@@ -32,6 +33,9 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  margin: 12px;              /* add spacing so dark bg is visible */
+  border-radius: 8px;        /* optional, to get a card feel */
+  overflow: hidden;
 }
 
 /* Optional: remove the old top header bar look */
