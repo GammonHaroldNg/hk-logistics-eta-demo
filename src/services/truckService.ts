@@ -459,7 +459,7 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
   const progressRatio = Math.min(elapsedSeconds / travelTimeSeconds, 1);
 
   const existingId = tripToTruckId.get(trip.id);
-  if (existingId) {
+  if (existingId && activeTrucks.has(existingId)) {
     const existing = activeTrucks.get(existingId);
     if (existing) {
       existing.progressRatio = Math.max(existing.progressRatio, progressRatio);
@@ -467,6 +467,11 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
         interpolatePosition(routeGeometry, existing.progressRatio) ?? existing.currentPosition;
       return existing;
     }
+  }
+
+  // If we had a mapping but no active truck (e.g. after reset), don’t re-create
+  if (existingId && !activeTrucks.has(existingId)) {
+    return null;
   }
 
   // NEW: define startPos for DB trucks as well
