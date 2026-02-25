@@ -160,114 +160,112 @@ function updateOverviewFromSimple(simple) {
 
     ${warningHtmlTop}
   `;
+    updatePerformanceTimeline(sum, plan);
   }
-
 
 
   // ==== bottom panel: 2-row planned vs actual timeline ====
-  const perfPanel = document.getElementById('projectPerformance');
-  if (!perfPanel) return;
+  function updatePerformanceTimeline(sum, plan) {
+    const perfPanel = document.getElementById('projectPerformance');
+    if (!perfPanel) return;
 
-  const buckets = sum.hourlyTimeline || [];
-  if (!buckets.length) {
-    perfPanel.innerHTML =
-      '<div style="font-size:12px;color:#6b7280;">No trips completed yet today.</div>';
-    return;
-  }
+    const buckets = sum.hourlyTimeline || [];
+    if (!buckets.length) {
+      perfPanel.innerHTML =
+        '<div style="font-size:12px;color:#6b7280;">No trips completed yet today.</div>';
+      return;
+    }
 
-  const startHour = buckets[0].hour;
-  const endHour = buckets[buckets.length - 1].hour;
+    const startHour = buckets[0].hour;
+    const endHour = buckets[buckets.length - 1].hour;
 
-  // Hour labels row
-  function formatHourLabel(h) {
-    const hour = ((h % 24) + 24) % 24;
-    const suffix = hour < 12 ? 'am' : 'pm';
-    const display = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-    return display + ' ' + suffix;
-  }
+    function formatHourLabel(h) {
+      const hour = ((h % 24) + 24) % 24;
+      const suffix = hour < 12 ? 'am' : 'pm';
+      const display = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+      return display + ' ' + suffix;
+    }
 
-  let hourMarksHtml =
-    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
-  for (let h = startHour; h <= endHour; h++) {
-    hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
-  }
-  hourMarksHtml += '</div>';
-
-  function buildRow(label, type) {
-    const totalHours = endHour - startHour + 1;
-    let rowHtml =
-      '<div class="timeline-row">' +
-        '<div class="timeline-label">' + label + '</div>' +
-        '<div class="timeline-track">';
-
-    const now = new Date();
-    const nowHourInt = now.getHours();
-
+    let hourMarksHtml =
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
     for (let h = startHour; h <= endHour; h++) {
-      const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
-      const widthPct = (1 / totalHours) * 100;
+      hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
+    }
+    hourMarksHtml += '</div>';
 
-      if (type === 'planned') {
-        rowHtml +=
-          '<div class="timeline-hour planned" ' +
-          'style="left:' + ((h - startHour) / totalHours * 100) +
-          '%;width:' + widthPct + '%;">' +
-            (bucket.planned || 0) +
-          '</div>';
-      } else {
-        const isFuture = h > nowHourInt;
-        let planned = bucket.planned || plan.trucksPerHour;
-        let actual = bucket.actual || 0;
-        let text = '';
-        let cls = 'actual-ok';
+    function buildRow(label, type) {
+      const totalHours = endHour - startHour + 1;
+      let rowHtml =
+        '<div class="timeline-row">' +
+          '<div class="timeline-label">' + label + '</div>' +
+          '<div class="timeline-track">';
 
-        // Delay bucket: planned 0, actual negative => 0/delayCount
-        if (planned === 0 && actual < 0) {
-          const delayCount = Math.abs(actual);
-          planned = delayCount;
-          actual = 0;
-          text = '0/' + delayCount;
-          cls = 'actual-miss';
+      const now = new Date();
+      const nowHourInt = now.getHours();
+
+      for (let h = startHour; h <= endHour; h++) {
+        const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
+        const widthPct = (1 / totalHours) * 100;
+
+        if (type === 'planned') {
+          rowHtml +=
+            '<div class="timeline-hour planned" ' +
+            'style="left:' + ((h - startHour) / totalHours * 100) +
+            '%;width:' + widthPct + '%;">' +
+              (bucket.planned || 0) +
+            '</div>';
         } else {
-          text = actual + '/' + planned;
-          if (isFuture) {
-            cls = 'actual-future';
-          } else if (actual < planned) {
+          const isFuture = h > nowHourInt;
+          let planned = bucket.planned || plan.trucksPerHour;
+          let actual = bucket.actual || 0;
+          let text = '';
+          let cls = 'actual-ok';
+
+          if (planned === 0 && actual < 0) {
+            const delayCount = Math.abs(actual);
+            planned = delayCount;
+            actual = 0;
+            text = '0/' + delayCount;
             cls = 'actual-miss';
-          } else if (actual > planned) {
-            cls = 'actual-fast';
           } else {
-            cls = 'actual-ok';
+            text = actual + '/' + planned;
+            if (isFuture) {
+              cls = 'actual-future';
+            } else if (actual < planned) {
+              cls = 'actual-miss';
+            } else if (actual > planned) {
+              cls = 'actual-fast';
+            } else {
+              cls = 'actual-ok';
+            }
           }
+
+          rowHtml +=
+            '<div class="timeline-hour ' + cls + '" ' +
+            'style="left:' + ((h - startHour) / totalHours * 100) +
+            '%;width:' + widthPct + '%;">' +
+              text +
+            '</div>';
         }
-
-        rowHtml +=
-          '<div class="timeline-hour ' + cls + '" ' +
-          'style="left:' + ((h - startHour) / totalHours * 100) +
-          '%;width:' + widthPct + '%;">' +
-            text +
-          '</div>';
       }
+
+      const nowFloat = now.getHours() + now.getMinutes() / 60;
+      if (nowFloat >= startHour && nowFloat <= endHour) {
+        const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
+        rowHtml += '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
+      }
+
+      rowHtml += '</div></div>';
+      return rowHtml;
     }
 
-    // Current time marker line
-    const nowFloat = now.getHours() + now.getMinutes() / 60;
-    if (nowFloat >= startHour && nowFloat <= endHour) {
-      const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
-      rowHtml += '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
-    }
+    const html =
+      hourMarksHtml +
+      buildRow('Planned', 'planned') +
+      buildRow('Actual', 'actual');
 
-    rowHtml += '</div></div>';
-    return rowHtml;
+    perfPanel.innerHTML = html;
   }
-
-  const html =
-    hourMarksHtml +
-    buildRow('Planned', 'planned') +
-    buildRow('Actual', 'actual');
-
-  perfPanel.innerHTML = html;
-
 
 // === Truck list, separate helper ===
 function updateTruckListFromSim(data) {
