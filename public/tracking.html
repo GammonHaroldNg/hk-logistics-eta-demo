@@ -479,11 +479,13 @@
               <th>Arrival</th>
               <th class="text-right">Duration</th>
               <th>Corrected</th>
+              <th>Plant</th>
               <th>ID</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="trips-body">
+
             <tr>
               <td colspan="8" class="text-muted">
                 No trips loaded yet.
@@ -607,7 +609,7 @@
       if (!trips.length) {
         const row = document.createElement('tr');
         const cell = document.createElement('td');
-        cell.colSpan = 8;               // ← you’ll change this to 8
+        cell.colSpan = 9;
         cell.className = 'text-muted';
         cell.textContent = 'No trips for today.';
         row.appendChild(cell);
@@ -655,6 +657,11 @@
             tdCorrected.textContent = '-';
           }
           tr.appendChild(tdCorrected);
+
+          // NEW: concrete plant
+          const tdPlant = document.createElement('td');
+          tdPlant.textContent = t.concrete_plant || '';
+          tr.appendChild(tdPlant);
 
           const tdId = document.createElement('td');
           tdId.textContent = t.id || '';
