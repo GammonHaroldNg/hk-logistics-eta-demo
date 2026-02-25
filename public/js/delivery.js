@@ -140,22 +140,16 @@ function updateOverviewFromSimple(simple) {
 
   const infoEl = document.getElementById('projectRouteInfo');
   if (infoEl) {
-    infoEl.innerHTML =
-      '<div style="margin-bottom:10px;font-size:12px;color:#d1d5db;">' +
-        'Today plan: <b>' + plannedTotal + ' trips</b> · Completed: <b>' + completed + '</b><br>' +
-        'Target concrete: <b>' + dailyTarget + ' m³</b>' +
-      '</div>' +
-      '<div style="background:#1f2937;border-radius:999px;height:18px;overflow:hidden;">' +
-        '<div style="background:' + barColor + ';height:100%;width:' + pct + '%;' +
-        'border-radius:999px;transition:width 0.5s;display:flex;align-items:center;' +
-        'justify-content:center;color:#0b1120;font-size:11px;font-weight:600;">' +
-          pct + '%' +
-        '</div>' +
-      '</div>' +
-      '<div style="margin-top:8px;font-size:12px;color:#d1d5db;">' +
-        'In progress: <b>' + inProgress + '</b> trips' +
-      '</div>' +
-      warningHtmlTop;
+    infoEl.innerHTML = `
+      <div class="route-info-content" style="margin-bottom:10px">
+        Today plan: <b>${plannedTotal} trips</b> – Completed: <b>${completed}</b><br>
+        Target concrete: <b>${dailyTarget} m³</b>
+      </div>
+      <div class="overview-meta" style="margin-top:8px">
+        In progress: <b>${inProgress}</b> trips
+      </div>
+      ${warningHtmlTop}
+    `;
   }
 
   // ==== bottom panel: 2-row planned vs actual timeline ====

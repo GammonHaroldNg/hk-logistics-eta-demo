@@ -753,10 +753,16 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     const buckets: Record<number, HourBucket> = {};
 
     // Planned windows: from workStart to workEnd (integer hours)
-    const [shRaw] = plan.workStart.split(':');
-    const [ehRaw] = plan.workEnd.split(':');
-    const startHour = Number(shRaw ?? 8);
-    const endHour = Number(ehRaw ?? 23); // exclusive
+    const shRaw = plan.workStart?.split(':')[0];
+    const ehRaw = plan.workEnd?.split(':')[0];
+
+    let startHour = Number.isFinite(Number(shRaw)) ? Number(shRaw) : 8;
+    let endHour = Number.isFinite(Number(ehRaw)) ? Number(ehRaw) : 23;
+
+    // guard against bad data
+    startHour = Math.max(0, Math.min(23, startHour));
+    endHour = Math.max(startHour + 1, Math.min(24, endHour)); // exclusive
+
 
     for (let h = startHour; h < endHour; h++) {
       buckets[h] = {
