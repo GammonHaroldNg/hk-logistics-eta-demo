@@ -829,17 +829,6 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
 
     const totalShortfall = Math.max(0, totalPlannedSoFar - totalActualSoFar);
 
-    // 8 If still behind, add one delay bucket at 23–24 (hour 23)
-    if (totalShortfall > 0) {
-      const delayHour = 23; // 23–24 window
-
-      hourlyTimeline.push({
-        hour: delayHour,
-        planned: 0,               // planned always 0 in this last hour
-        actual: -totalShortfall,  // negative sentinel, frontend will render 0/N
-      });
-    }
-
     // 9 Send response
     return res.json({
       ok: true,
