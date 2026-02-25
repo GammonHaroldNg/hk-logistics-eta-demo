@@ -759,6 +759,10 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     let startHour = Number.isFinite(Number(shRaw)) ? Number(shRaw) : 8;
     let endHour = Number.isFinite(Number(ehRaw)) ? Number(ehRaw) : 23;
 
+    // fallback to your standard window if parsing fails
+    if (!Number.isFinite(startHour)) startHour = 8;
+    if (!Number.isFinite(endHour)) endHour = 23;
+
     // guard against bad data
     startHour = Math.max(0, Math.min(23, startHour));
     endHour = Math.max(startHour + 1, Math.min(24, endHour)); // exclusive

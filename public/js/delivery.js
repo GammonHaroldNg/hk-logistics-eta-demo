@@ -106,51 +106,63 @@ async function pollDeliveryStatus() {
 function updateOverviewFromSimple(simple) {
   const plan = simple.plan;
   const sum = simple.tripsSummary;
-
   const pct = sum.percentComplete;
   const completed = sum.completedCount;
   const inProgress = sum.inProgressCount;
+
   const plannedTotal = plan.plannedTripsTotal;
-  const dailyTarget = plan.targetVolume || 0;
+  const dailyTarget = plan.targetVolume ?? 0;
+  const barColor = pct >= 100 ? '#22c55e' : '#3b82f6';
 
-  const barColor = pct < 100 ? '#3b82f6' : '#22c55e';
-
-  // ==== top card ====
   const overviewCard = document.querySelector('#projectPanel .eta-info');
   if (overviewCard) {
     overviewCard.classList.add('active');
     overviewCard.classList.remove('inactive');
   }
 
-  const shortfallTop = sum.totalShortfall || 0;
+  const shortfallTop = sum.totalShortfall ?? 0;
   let warningHtmlTop = '';
   if (shortfallTop > 0) {
-    warningHtmlTop =
-      '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;' +
-      'border-radius:6px;font-size:12px;color:#dc2626;">' +
-        '⚠️ Behind schedule: <b>' + shortfallTop + '</b> trips below plan so far' +
-      '</div>';
+    warningHtmlTop = `
+      <div class="overview-warning overview-warning-behind">
+        Behind schedule: <b>${shortfallTop}</b> trips below plan so far
+      </div>
+    `;
   } else if (completed > 0) {
-    warningHtmlTop =
-      '<div style="margin-top:8px;padding:8px;background:#022c22;border:1px solid #16a34a;' +
-      'border-radius:6px;font-size:12px;color:#bbf7d0;">' +
-        '✅ On or above schedule based on completed trips' +
-      '</div>';
+    warningHtmlTop = `
+      <div class="overview-warning overview-warning-ok">
+        On or above schedule based on completed trips
+      </div>
+    `;
   }
 
   const infoEl = document.getElementById('projectRouteInfo');
-  if (infoEl) {
-    infoEl.innerHTML = `
-      <div class="route-info-content" style="margin-bottom:10px">
-        Today plan: <b>${plannedTotal} trips</b> – Completed: <b>${completed}</b><br>
-        Target concrete: <b>${dailyTarget} m³</b>
+  if (!infoEl) return;
+
+  infoEl.innerHTML = `
+    <div class="route-info-content" style="margin-bottom:10px">
+      Today plan: <b>${plannedTotal} trips</b> – Completed: <b>${completed}</b><br>
+      Target concrete: <b>${dailyTarget} m³</b>
+    </div>
+
+    <div class="overview-progress">
+      <div class="overview-progress-track">
+        <div class="overview-progress-bar"
+             style="width:${pct}%;background:${barColor}">
+          <span class="overview-progress-label">${pct}%</span>
+        </div>
       </div>
-      <div class="overview-meta" style="margin-top:8px">
-        In progress: <b>${inProgress}</b> trips
-      </div>
-      ${warningHtmlTop}
-    `;
+    </div>
+
+    <div class="overview-meta" style="margin-top:8px">
+      In progress: <b>${inProgress}</b> trips
+    </div>
+
+    ${warningHtmlTop}
+  `;
   }
+
+
 
   // ==== bottom panel: 2-row planned vs actual timeline ====
   const perfPanel = document.getElementById('projectPerformance');
@@ -255,7 +267,7 @@ function updateOverviewFromSimple(simple) {
     buildRow('Actual', 'actual');
 
   perfPanel.innerHTML = html;
-}
+
 
 // === Truck list, separate helper ===
 function updateTruckListFromSim(data) {

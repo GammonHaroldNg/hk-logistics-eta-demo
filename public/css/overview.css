@@ -379,18 +379,37 @@ main {
 }
 
 /* Concrete Delivery Overview text */
-.eta-info .route-info-content {
-  font-size: 12px;
-  color: #9ca3af;           /* darker grey for body text */
-}
-
-.eta-info .route-info-content b {
-  color: #e5e7eb;           /* keep bold values brighter */
-}
-
-/* “In progress” + warning lines inside overview card */
+.eta-info .route-info-content,
 .eta-info .overview-meta {
   font-size: 12px;
   color: #9ca3af;
+}
+
+.eta-info .route-info-content b,
+.eta-info .overview-meta b {
+  color: #e5e7eb;
+}
+
+/* Progress bar styling */
+.eta-info .overview-progress-track {
+  background: #111827;
+  border-radius: 999px;
+  height: 18px;
+  overflow: hidden;
+}
+
+.eta-info .overview-progress-bar {
+  height: 100%;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: width 0.5s;
+}
+
+.eta-info .overview-progress-label {
+  color: #0b1120;
+  font-size: 11px;
+  font-weight: 600;
 }
 
