@@ -710,28 +710,45 @@ app.get('/api/trucks/:routeId', (req, res) => {
 // Start a trip
 app.post('/api/trips/start', async (req: any, res: any) => {
   try {
-    const { vehicleId, actualStartAt, corrected } = req.body;
+    const { vehicleId, actualStartAt, corrected, concretePlant } = req.body;
     if (!vehicleId) {
       return res.status(400).json({ error: 'vehicleId is required' });
     }
 
     const startTime = actualStartAt ? new Date(actualStartAt) : new Date();
 
+    // Only allow the two plants; default to Gammon if anything else
+    const plant =
+      concretePlant === 'HKC Tsing Yi Plant'
+        ? 'HKC Tsing Yi Plant'
+        : 'Gammon Tuen Mun Plant';
+
     const sql = `
-      insert into public.trips (vehicle_id, actual_start_at, status, corrected)
-      values ($1, $2, 'in_progress', coalesce($3, false))
+      insert into public.trips (
+        vehicle_id,
+        actual_start_at,
+        concrete_plant,
+        status,
+        corrected
+      )
+      values ($1, $2, $3, 'in_progress', coalesce($4, false))
       returning *
     `;
-    const result = await query(sql, [vehicleId, startTime.toISOString(), corrected]);
+    const result = await query(sql, [
+      vehicleId,
+      startTime.toISOString(),
+      plant,
+      corrected,
+    ]);
     const trip = result.rows[0];
 
-    // Trip Admin → DB only; sim will pick this up on next sync
     res.status(201).json({ ok: true, trip });
   } catch (err: any) {
     console.error('Error in /api/trips/start', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
+
 
 // ===== API: SIMPLE DELIVERY STATUS (trip-count based) =====
 app.get('/api/delivery/simple-status', async (req: any, res: any) => {

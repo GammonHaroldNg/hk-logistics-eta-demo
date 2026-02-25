@@ -314,6 +314,12 @@
           autocomplete="off"
         />
 
+        <label for="start-plant">Concrete plant</label>
+        <select id="start-plant">
+          <option value="Gammon Tuen Mun Plant">Gammon Tuen Mun Plant</option>
+          <option value="HKC Tsing Yi Plant">HKC Tsing Yi Plant</option>
+        </select>
+
         <div class="field-row">
           <div>
             <label for="start-time">Start time (optional)</label>
@@ -323,6 +329,7 @@
             </div>
           </div>
         </div>
+
 
         <div class="checkbox-row">
           <input type="checkbox" id="start-corrected" />
@@ -492,6 +499,7 @@
     const startVehicleInput = document.getElementById('start-vehicle-id');
     const startTimeInput = document.getElementById('start-time');
     const startCorrectedInput = document.getElementById('start-corrected');
+    const startPlantSelect = document.getElementById('start-plant');
     const arriveTripIdInput = document.getElementById('arrive-trip-id');
     const arriveTimeInput = document.getElementById('arrive-time');
     const arriveCorrectedInput = document.getElementById('arrive-corrected');
@@ -748,15 +756,25 @@
         return;
       }
 
+      const concretePlant =
+        startPlantSelect && startPlantSelect.value
+          ? startPlantSelect.value
+          : 'Gammon Tuen Mun Plant';
+
       const btn = document.getElementById('btn-start-trip');
       btn.disabled = true;
 
-      const body = { vehicleId, corrected: startCorrectedInput.checked };
+      const body = {
+        vehicleId,
+        corrected: startCorrectedInput.checked,
+        concretePlant, // send selected plant
+      };
       const startVal = startTimeInput.value;
       if (startVal) {
         const dt = new Date(startVal);
         body.actualStartAt = dt.toISOString();
       }
+
 
       try {
         const res = await fetch('/api/trips/start', {
