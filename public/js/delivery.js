@@ -223,7 +223,7 @@ function updatePerformanceTimeline(sum, plan) {
             planned +
           '</div>';
       } else {
-        let planned = bucket.planned || plan.trucksPerHour;
+        let planned = bucket.planned || 0;
         let actual = bucket.actual || 0;
         let text = '';
         let cls = 'actual-ok';

@@ -357,7 +357,12 @@ async function loadTodayTruckPlan() {
       target_concrete_volume,
       work_start_hour,
       work_end_hour,
-      planned_trucks_per_hour
+      planned_trucks_per_hour,
+      h07_08, h08_09, h09_10, h10_11,
+      h11_12, h12_13, h13_14, h14_15,
+      h15_16, h16_17, h17_18, h18_19,
+      h19_20, h20_21, h21_22, h22_23,
+      h23_00
     from public.delivery_targets
     where operation_date = (now() at time zone 'Asia/Hong_Kong')::date
     order by updated_at desc, created_at desc
@@ -370,34 +375,55 @@ async function loadTodayTruckPlan() {
     return null;
   }
 
-  const workStart = row.work_start_hour as string; // '08:00:00'
-  const workEnd   = row.work_end_hour as string;   // '23:00:00'
-  const trucksPerHour = Number(row.planned_trucks_per_hour) || 0;
-  const targetVolume = Number(row.target_concrete_volume) || 0;  // <-- add this
+  const workStart = row.work_start_hour as string;
+  const workEnd   = row.work_end_hour as string;
 
+  // per-hour plan (null -> 0)
+  const hourlyPlan: Record<number, number> = {
+    7:  Number(row.h07_08 || 0),
+    8:  Number(row.h08_09 || 0),
+    9:  Number(row.h09_10 || 0),
+    10: Number(row.h10_11 || 0),
+    11: Number(row.h11_12 || 0),
+    12: Number(row.h12_13 || 0),
+    13: Number(row.h13_14 || 0),
+    14: Number(row.h14_15 || 0),
+    15: Number(row.h15_16 || 0),
+    16: Number(row.h16_17 || 0),
+    17: Number(row.h17_18 || 0),
+    18: Number(row.h18_19 || 0),
+    19: Number(row.h19_20 || 0),
+    20: Number(row.h20_21 || 0),
+    21: Number(row.h21_22 || 0),
+    22: Number(row.h22_23 || 0),
+    23: Number(row.h23_00 || 0),
+  };
+
+  const plannedTripsTotal = Object.values(hourlyPlan).reduce((s, v) => s + v, 0);
+
+  // keep old trucksPerHour / workingHours for backwards‑compat
   const [shRaw, smRaw] = workStart.split(':');
   const [ehRaw, emRaw] = workEnd.split(':');
-
   const sh = Number(shRaw ?? 0);
   const sm = Number(smRaw ?? 0);
   const eh = Number(ehRaw ?? 0);
   const em = Number(emRaw ?? 0);
-
   const startMinutes = sh * 60 + sm;
-  const endMinutes = eh * 60 + em;
+  const endMinutes   = eh * 60 + em;
   const workingMinutes = Math.max(0, endMinutes - startMinutes);
-  const workingHours = workingMinutes / 60;
+  const workingHours   = workingMinutes / 60;
 
   return {
     operationDate: row.operation_date,
-    trucksPerHour,
+    trucksPerHour: Number(row.planned_trucks_per_hour) || 0, // legacy
     workingHours,
     workStart,
     workEnd,
-    targetVolume,                      // now defined
+    targetVolume: Number(row.target_concrete_volume) || 0,
+    hourlyPlan,
+    plannedTripsTotal,
   };
 }
-
 
 
 // ===== PAGE ROUTES =====
@@ -738,8 +764,9 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     const completedTrips = trips.filter((t: any) => t.status === 'completed');
     const inProgressTrips = trips.filter((t: any) => t.status === 'in_progress');
 
-    // 3) Planned totals based on trucks/hour and working hours
-    const plannedTripsTotal = Math.round(plan.trucksPerHour * plan.workingHours);
+    // 3) Planned totals based on per-hour plan from DB
+    const plannedTripsTotal = plan.plannedTripsTotal;
+
 
     // 4) Progress by vehicle count, not volume
     const percentComplete =
@@ -751,36 +778,16 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     type HourBucket = { hour: number; planned: number; actual: number };
     const buckets: Record<number, HourBucket> = {};
 
-    // Planned working hours from DB (usually 8–23)
-    const shRaw = plan.workStart.split(':')[0]; // "08"
-    const ehRaw = plan.workEnd.split(':')[0];  // "23"
-
-    let workStartHour = Number(shRaw);
-    let workEndHour = Number(ehRaw);
-
-    // Fallbacks
-    if (!Number.isFinite(workStartHour)) workStartHour = 8;
-    if (!Number.isFinite(workEndHour)) workEndHour = 23;
-
-    // Clamp and keep end exclusive
-    workStartHour = Math.max(0, Math.min(23, workStartHour));
-    workEndHour = Math.max(workStartHour + 1, Math.min(24, workEndHour));
-
-    // Display window: from 7 to 24 (7–23 for timeline, 23–24 will be delay bucket)
+    // Display window: from 7 to 24 (exclusive)
     const displayStartHour = 7;
-    const displayEndHour = 24; // exclusive
+    const displayEndHour = 24;
 
-    // Pre-create buckets for 7..23 with correct planned counts
+    // 5a Pre-fill planned counts from per-hour DB plan (7..23)
     for (let h = displayStartHour; h < displayEndHour; h++) {
-      let planned = 0;
-
-      // Planned only inside working window 8–23 (workStartHour..workEndHour)
-      if (h >= workStartHour && h < workEndHour) {
-        planned = plan.trucksPerHour;
-      }
-
+      const planned = plan.hourlyPlan[h] ?? 0;
       buckets[h] = { hour: h, planned, actual: 0 };
     }
+
 
     // 6 Fill actual completed trips per hour (HK time)
     for (const t of completedTrips) {
@@ -841,10 +848,11 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         operationDate: plan.operationDate,
         workStart: plan.workStart,
         workEnd: plan.workEnd,
-        trucksPerHour: plan.trucksPerHour,
+        trucksPerHour: plan.trucksPerHour,  // legacy / optional
         workingHours: plan.workingHours,
         plannedTripsTotal,
         targetVolume: plan.targetVolume,
+        hourlyPlan: plan.hourlyPlan,       // send to frontend if you want it there too
       },
       tripsSummary: {
         completedCount: completedTrips.length,
