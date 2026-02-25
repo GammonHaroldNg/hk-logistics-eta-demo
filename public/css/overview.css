@@ -423,3 +423,22 @@ main {
   color: #3b82f6; /* blue for 180 trips, 4, 1188 m³ */
 }
 
+/* Overview warning pill styles */
+.eta-info .overview-warning {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.eta-info .overview-warning-behind {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+}
+
+.eta-info .overview-warning-ok {
+  background: #022c22;
+  border: 1px solid #16a34a;
+  color: #bbf7d0;
+}
