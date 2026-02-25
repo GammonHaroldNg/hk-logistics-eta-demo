@@ -172,15 +172,11 @@ function updatePerformanceTimeline(sum, plan) {
   if (!perfPanel) return;
 
   const buckets = sum.hourlyTimeline || [];
-  if (!buckets.length) {
-    perfPanel.innerHTML =
-      '<div style="font-size:12px;color:#6b7280;">No trips completed yet today.</div>';
-    return;
-  }
 
-  const startHour = buckets[0].hour;
-  const endHour = buckets[buckets.length - 1].hour; // includes delay bucket at 23
-  const totalHours = endHour - startHour + 1;       // inclusive range
+  // Fixed display window: 7–23 hours (7–8, 8–9, ..., 23–24)
+  const displayStart = 7;
+  const displayEnd = 24; // exclusive
+  const totalHours = displayEnd - displayStart; // 17
 
   function formatHourLabel(h) {
     const hour = ((h % 24) + 24) % 24;
@@ -189,12 +185,18 @@ function updatePerformanceTimeline(sum, plan) {
     return display + ' ' + suffix;
   }
 
-  // header: one label per hour
+  // Build a lookup for buckets by hour
+  const bucketMap = {};
+  buckets.forEach(b => { bucketMap[b.hour] = b; });
+
+  // Transparent background label row (one cell per bucket)
   let hourMarksHtml =
-    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
-  for (let h = startHour; h <= endHour; h++) {
+    '<div style="display:flex;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
+  for (let h = displayStart; h < displayEnd; h++) {
     hourMarksHtml +=
-      '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
+      '<div style="flex:1;text-align:center;opacity:0.8;">' +
+        formatHourLabel(h) +
+      '</div>';
   }
   hourMarksHtml += '</div>';
 
@@ -202,24 +204,21 @@ function updatePerformanceTimeline(sum, plan) {
     let rowHtml =
       '<div class="timeline-row">' +
         '<div class="timeline-label">' + label + '</div>' +
-        '<div class="timeline-track">';
+        '<div class="timeline-track" style="display:flex;position:relative;">';
 
     const now = new Date();
     const nowHourInt = now.getHours();
 
-    for (let h = startHour; h <= endHour; h++) {
-      const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
-      const widthPct = (1 / totalHours) * 100;
-      const leftPct = ((h - startHour) / totalHours) * 100;
+    for (let h = displayStart; h < displayEnd; h++) {
+      const bucket = bucketMap[h] || { planned: 0, actual: 0 };
+      const isFuture = h > nowHourInt;
 
       if (type === 'planned') {
         rowHtml +=
-          '<div class="timeline-hour planned" ' +
-          'style="left:' + leftPct + '%;width:' + widthPct + '%;">' +
+          '<div class="timeline-hour planned" style="flex:1;border-right:1px solid rgba(255,255,255,0.1);">' +
             (bucket.planned || 0) +
           '</div>';
       } else {
-        const isFuture = h > nowHourInt;
         let planned = bucket.planned || plan.trucksPerHour;
         let actual = bucket.actual || 0;
         let text = '';
@@ -247,18 +246,20 @@ function updatePerformanceTimeline(sum, plan) {
 
         rowHtml +=
           '<div class="timeline-hour ' + cls + '" ' +
-          'style="left:' + leftPct + '%;width:' + widthPct + '%;">' +
+          'style="flex:1;border-right:1px solid rgba(255,255,255,0.1);">' +
             text +
           '</div>';
       }
     }
 
-    // current time marker
+    // current time marker (orange) over the flex track
     const nowFloat = now.getHours() + now.getMinutes() / 60;
-    if (nowFloat >= startHour && nowFloat <= endHour) {
-      const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
+    if (nowFloat >= displayStart && nowFloat <= displayEnd) {
+      const posPct = ((nowFloat - displayStart) / totalHours) * 100;
       rowHtml +=
-        '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
+        '<div class="timeline-current" ' +
+        'style="position:absolute;top:-4px;bottom:-4px;width:2px;background:#f97316;left:' +
+        posPct + '%;"></div>';
     }
 
     rowHtml += '</div></div>';
@@ -272,6 +273,7 @@ function updatePerformanceTimeline(sum, plan) {
 
   perfPanel.innerHTML = html;
 }
+
 
 // === Truck list, separate helper ===
 function updateTruckListFromSim(data) {
