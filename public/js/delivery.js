@@ -189,34 +189,31 @@ function updateOverviewFromSimple(simple) {
     }
 
     let hourMarksHtml =
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
+      '<div style="display:flex;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
     for (let h = startHour; h <= endHour; h++) {
-      hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
+      hourMarksHtml +=
+        '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
     }
     hourMarksHtml += '</div>';
+
 
     function buildRow(label, type) {
       const totalHours = endHour - startHour + 1;
       let rowHtml =
         '<div class="timeline-row">' +
           '<div class="timeline-label">' + label + '</div>' +
-          '<div class="timeline-track">';
-
-      const now = new Date();
-      const nowHourInt = now.getHours();
+          '<div class="timeline-track" style="display:flex;">';
 
       for (let h = startHour; h <= endHour; h++) {
         const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
-        const widthPct = (1 / totalHours) * 100;
 
         if (type === 'planned') {
           rowHtml +=
-            '<div class="timeline-hour planned" ' +
-            'style="left:' + ((h - startHour) / totalHours * 100) +
-            '%;width:' + widthPct + '%;">' +
+            '<div class="timeline-hour planned" style="flex:1;">' +
               (bucket.planned || 0) +
             '</div>';
         } else {
+
           const isFuture = h > nowHourInt;
           let planned = bucket.planned || plan.trucksPerHour;
           let actual = bucket.actual || 0;
