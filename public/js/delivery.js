@@ -180,6 +180,7 @@ function updatePerformanceTimeline(sum, plan) {
 
   const startHour = buckets[0].hour;
   const endHour = buckets[buckets.length - 1].hour;
+  const totalHours = endHour - startHour + 1;
 
   function formatHourLabel(h) {
     const hour = ((h % 24) + 24) % 24;
@@ -188,12 +189,11 @@ function updatePerformanceTimeline(sum, plan) {
     return display + ' ' + suffix;
   }
 
-  // header row
+  // header
   let hourMarksHtml =
-    '<div style="display:flex;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
+    '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
   for (let h = startHour; h <= endHour; h++) {
-    hourMarksHtml +=
-      '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
+    hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
   }
   hourMarksHtml += '</div>';
 
@@ -201,17 +201,20 @@ function updatePerformanceTimeline(sum, plan) {
     let rowHtml =
       '<div class="timeline-row">' +
         '<div class="timeline-label">' + label + '</div>' +
-        '<div class="timeline-track" style="display:flex;position:relative;">';
+        '<div class="timeline-track">';
 
     const now = new Date();
     const nowHourInt = now.getHours();
 
     for (let h = startHour; h <= endHour; h++) {
       const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
+      const widthPct = (1 / totalHours) * 100;
+      const leftPct = ((h - startHour) / totalHours) * 100;
 
       if (type === 'planned') {
         rowHtml +=
-          '<div class="timeline-hour planned" style="flex:1;">' +
+          '<div class="timeline-hour planned" ' +
+          'style="left:' + leftPct + '%;width:' + widthPct + '%;">' +
             (bucket.planned || 0) +
           '</div>';
       } else {
@@ -221,7 +224,6 @@ function updatePerformanceTimeline(sum, plan) {
         let text = '';
         let cls = 'actual-ok';
 
-        // special delay bucket (planned=0, actual<0 => 0/N)
         if (planned === 0 && actual < 0) {
           const delayCount = Math.abs(actual);
           planned = delayCount;
@@ -230,32 +232,25 @@ function updatePerformanceTimeline(sum, plan) {
           cls = 'actual-miss';
         } else {
           text = actual + '/' + planned;
-          if (isFuture) {
-            cls = 'actual-future';
-          } else if (actual < planned) {
-            cls = 'actual-miss';
-          } else if (actual > planned) {
-            cls = 'actual-fast';
-          } else {
-            cls = 'actual-ok';
-          }
+          if (isFuture) cls = 'actual-future';
+          else if (actual < planned) cls = 'actual-miss';
+          else if (actual > planned) cls = 'actual-fast';
+          else cls = 'actual-ok';
         }
 
         rowHtml +=
-          '<div class="timeline-hour ' + cls + '" style="flex:1;">' +
+          '<div class="timeline-hour ' + cls + '" ' +
+          'style="left:' + leftPct + '%;width:' + widthPct + '%;">' +
             text +
           '</div>';
       }
     }
 
-    // current time marker
     const nowFloat = now.getHours() + now.getMinutes() / 60;
     if (nowFloat >= startHour && nowFloat <= endHour) {
       const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
       rowHtml +=
-        '<div class="timeline-current" ' +
-        'style="position:absolute;top:0;bottom:0;width:2px;background:#f97316;left:' +
-        posPct + '%;"></div>';
+        '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
     }
 
     rowHtml += '</div></div>';
@@ -269,6 +264,7 @@ function updatePerformanceTimeline(sum, plan) {
 
   perfPanel.innerHTML = html;
 }
+
 
 
 // === Truck list, separate helper ===
