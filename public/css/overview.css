@@ -442,3 +442,20 @@ main {
   border: 1px solid #16a34a;
   color: #bbf7d0;
 }
+
+/* Flex-based timeline cells for overview timeline */
+.performance-timeline .timeline-track {
+  display: flex;
+}
+
+.performance-timeline .timeline-hour {
+  position: relative;             /* was absolute */
+  flex: 1 1 0;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
