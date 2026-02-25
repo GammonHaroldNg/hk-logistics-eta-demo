@@ -122,16 +122,18 @@ function updateOverviewFromSimple(simple) {
 
   const shortfallTop = sum.totalShortfall ?? 0;
   let warningHtmlTop = '';
+
   if (shortfallTop > 0) {
     warningHtmlTop = `
       <div class="overview-warning overview-warning-behind">
-        Behind schedule: <b>${shortfallTop}</b> trips below plan so far
+        ⚠️ Behind schedule:
+        <b>${shortfallTop}</b> trips below plan so far
       </div>
     `;
   } else if (completed > 0) {
     warningHtmlTop = `
       <div class="overview-warning overview-warning-ok">
-        On or above schedule based on completed trips
+        ✅ On or above schedule based on completed trips
       </div>
     `;
   }

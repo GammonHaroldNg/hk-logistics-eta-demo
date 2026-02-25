@@ -747,33 +747,27 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         ? Math.round((completedTrips.length / plannedTripsTotal) * 100)
         : 0;
 
-    // 5) Build per-hour planned + actual (HK time)
+    // 5 Build per-hour planned/actual HK time
     type HourBucket = { hour: number; planned: number; actual: number };
-
     const buckets: Record<number, HourBucket> = {};
 
-    // Planned windows: from workStart to workEnd (integer hours)
-    const shRaw = plan.workStart?.split(':')[0];
-    const ehRaw = plan.workEnd?.split(':')[0];
+    // Planned windows from workStart to workEnd: integer hours
+    const [shRaw] = plan.workStart.split(':');  // e.g. "08"
+    const [ehRaw] = plan.workEnd.split(':');    // e.g. "23"
 
-    let startHour = Number.isFinite(Number(shRaw)) ? Number(shRaw) : 8;
-    let endHour = Number.isFinite(Number(ehRaw)) ? Number(ehRaw) : 23;
+    let startHour = Number(shRaw);
+    let endHour = Number(ehRaw);
 
-    // fallback to your standard window if parsing fails
+    // Fallbacks if parsing fails
     if (!Number.isFinite(startHour)) startHour = 8;
     if (!Number.isFinite(endHour)) endHour = 23;
 
-    // guard against bad data
+    // Clamp and keep end exclusive
     startHour = Math.max(0, Math.min(23, startHour));
-    endHour = Math.max(startHour + 1, Math.min(24, endHour)); // exclusive
-
+    endHour = Math.max(startHour + 1, Math.min(24, endHour));
 
     for (let h = startHour; h < endHour; h++) {
-      buckets[h] = {
-        hour: h,
-        planned: plan.trucksPerHour,
-        actual: 0,
-      };
+      buckets[h] = { hour: h, planned: plan.trucksPerHour, actual: 0 };
     }
 
     // Fill actual completed trips per hour from actual_arrival_at

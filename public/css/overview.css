@@ -413,3 +413,13 @@ main {
   font-weight: 600;
 }
 
+/* Overview card text + numeric accents */
+.eta-info .route-info-content {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.eta-info .route-info-content b {
+  color: #3b82f6; /* blue for 180 trips, 4, 1188 m³ */
+}
+
