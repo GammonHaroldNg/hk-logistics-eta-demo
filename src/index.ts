@@ -774,39 +774,39 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         ? Math.round((completedTrips.length / plannedTripsTotal) * 100)
         : 0;
 
+
     // 5 Build per-hour planned / actual HK time with display window 7–24
-    type HourBucket = { hour: number; planned: number; actual: number };
-    const buckets: Record<number, HourBucket> = {};
+      type HourBucket = { hour: number; planned: number; actual: number };
+      const buckets: Record<number, HourBucket> = {};
 
-    // Display window: from 7 to 24 (exclusive)
-    const displayStartHour = 7;
-    const displayEndHour = 24;
+      const displayStartHour = 7;
+      const displayEndHour = 24;
 
-    // 5a Pre-fill planned counts from per-hour DB plan (7..23)
+    // 5a: pre-fill planned counts from hourlyPlan for 7..23
     for (let h = displayStartHour; h < displayEndHour; h++) {
       const planned = plan.hourlyPlan[h] ?? 0;
       buckets[h] = { hour: h, planned, actual: 0 };
     }
 
-
     // 6 Fill actual completed trips per hour (HK time)
     for (const t of completedTrips) {
-      if (!t.actualarrivalat) continue;
+      if (!t.actual_arrival_at) continue;
 
       const hkHourSql = `
         select extract(hour from $1::timestamptz at time zone 'Asia/Hong_Kong') as h
       `;
-      const r = await query(hkHourSql, [t.actualarrivalat]);
+      const r = await query(hkHourSql, [t.actual_arrival_at]);
       const h = Number(r.rows[0].h);
 
-      // Only care about arrivals between 7 and 23; others fall outside display window
       if (h < displayStartHour || h >= displayEndHour) continue;
 
-      if (!buckets[h]) {
-        buckets[h] = { hour: h, planned: 0, actual: 0 };
-      }
-      buckets[h].actual += 1;
+      const bucket = buckets[h];
+      if (!bucket) continue;             // satisfies TS
+
+      bucket.actual += 1;
     }
+
+
 
     // 7 Build sorted timeline and compute cumulative shortfall up to "now"
     let hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
