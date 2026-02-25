@@ -747,37 +747,53 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         ? Math.round((completedTrips.length / plannedTripsTotal) * 100)
         : 0;
 
-    // 5 Build per-hour planned/actual HK time
+    // 5 Build per-hour planned / actual HK time with display window 7–24
     type HourBucket = { hour: number; planned: number; actual: number };
     const buckets: Record<number, HourBucket> = {};
 
-    // Planned windows from workStart to workEnd: integer hours
-    const [shRaw] = plan.workStart.split(':');  // e.g. "08"
-    const [ehRaw] = plan.workEnd.split(':');    // e.g. "23"
+    // Planned working hours from DB (usually 8–23)
+    const shRaw = plan.workStart.split(':')[0]; // "08"
+    const ehRaw = plan.workEnd.split(':')[0];  // "23"
 
-    let startHour = Number(shRaw);
-    let endHour = Number(ehRaw);
+    let workStartHour = Number(shRaw);
+    let workEndHour = Number(ehRaw);
 
-    // Fallbacks if parsing fails
-    if (!Number.isFinite(startHour)) startHour = 8;
-    if (!Number.isFinite(endHour)) endHour = 23;
+    // Fallbacks
+    if (!Number.isFinite(workStartHour)) workStartHour = 8;
+    if (!Number.isFinite(workEndHour)) workEndHour = 23;
 
     // Clamp and keep end exclusive
-    startHour = Math.max(0, Math.min(23, startHour));
-    endHour = Math.max(startHour + 1, Math.min(24, endHour));
+    workStartHour = Math.max(0, Math.min(23, workStartHour));
+    workEndHour = Math.max(workStartHour + 1, Math.min(24, workEndHour));
 
-    for (let h = startHour; h < endHour; h++) {
-      buckets[h] = { hour: h, planned: plan.trucksPerHour, actual: 0 };
+    // Display window: from 7 to 24 (7–23 for timeline, 23–24 will be delay bucket)
+    const displayStartHour = 7;
+    const displayEndHour = 24; // exclusive
+
+    // Pre-create buckets for 7..23 with correct planned counts
+    for (let h = displayStartHour; h < displayEndHour; h++) {
+      let planned = 0;
+
+      // Planned only inside working window 8–23 (workStartHour..workEndHour)
+      if (h >= workStartHour && h < workEndHour) {
+        planned = plan.trucksPerHour;
+      }
+
+      buckets[h] = { hour: h, planned, actual: 0 };
     }
 
-    // Fill actual completed trips per hour from actual_arrival_at
+    // 6 Fill actual completed trips per hour (HK time)
     for (const t of completedTrips) {
-      if (!t.actual_arrival_at) continue;
+      if (!t.actualarrivalat) continue;
+
       const hkHourSql = `
-        select extract(hour from ($1::timestamptz at time zone 'Asia/Hong_Kong')) as h
+        select extract(hour from $1::timestamptz at time zone 'Asia/Hong_Kong') as h
       `;
-      const r = await query(hkHourSql, [t.actual_arrival_at]);
-      const h: number = r.rows[0].h;
+      const r = await query(hkHourSql, [t.actualarrivalat]);
+      const h = Number(r.rows[0].h);
+
+      // Only care about arrivals between 7 and 23; others fall outside display window
+      if (h < displayStartHour || h >= displayEndHour) continue;
 
       if (!buckets[h]) {
         buckets[h] = { hour: h, planned: 0, actual: 0 };
@@ -785,32 +801,40 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
       buckets[h].actual += 1;
     }
 
+    // 7 Build sorted timeline and compute cumulative shortfall up to "now"
     let hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
 
-    // cumulative shortfall
-    let totalPlanned = 0;
-    let totalActual = 0;
-    hourlyTimeline.forEach(b => {
-      totalPlanned += b.planned;
-      totalActual += b.actual;
-    });
-    const totalShortfall = Math.max(0, totalPlanned - totalActual);
+    // current HK hour (integer)
+    const nowHkSql = `select extract(hour from now() at time zone 'Asia/Hong_Kong') as h`;
+    const nowRes = await query(nowHkSql);
+    const nowHour = Number(nowRes.rows[0].h);
 
-    // If still behind, add one delay bucket at endHour+1
-    if (totalShortfall > 0 && hourlyTimeline.length > 0) {
-      const last = hourlyTimeline[hourlyTimeline.length - 1];
-      if (last) {
-        const lastHour = last.hour;
-        hourlyTimeline.push({
-          hour: lastHour + 1,
-          planned: 0,
-          actual: -totalShortfall,
-        });
+    let totalPlannedSoFar = 0;
+    let totalActualSoFar = 0;
+
+    for (const b of hourlyTimeline) {
+      // Only count hours strictly before "now" for the shortfall aggregation
+      if (b.hour < nowHour) {
+        totalPlannedSoFar += b.planned;
+        totalActualSoFar += b.actual;
       }
     }
 
+    const totalShortfall = Math.max(0, totalPlannedSoFar - totalActualSoFar);
 
-    res.json({
+    // 8 If still behind, add one delay bucket at 23–24 (hour 23)
+    if (totalShortfall > 0) {
+      const delayHour = 23; // 23–24 window
+
+      hourlyTimeline.push({
+        hour: delayHour,
+        planned: 0,               // planned always 0 in this last hour
+        actual: -totalShortfall,  // negative sentinel, frontend will render 0/N
+      });
+    }
+
+    // 9 Send response
+    return res.json({
       ok: true,
       hasPlan: true,
       plan: {
@@ -820,7 +844,7 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         trucksPerHour: plan.trucksPerHour,
         workingHours: plan.workingHours,
         plannedTripsTotal,
-        targetVolume: plan.targetVolume,          // from loadTodayTruckPlan
+        targetVolume: plan.targetVolume,
       },
       tripsSummary: {
         completedCount: completedTrips.length,
@@ -830,14 +854,11 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         totalShortfall,
       },
     });
-
-
   } catch (err: any) {
-    console.error('Error in /api/delivery/simple-status:', err);
+    console.error('Error in /api/delivery/simple-status', err);
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
-
 
 // Mark trip as arrived
 app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
@@ -875,8 +896,6 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
     res.status(500).json({ ok: false, error: String(err) });
   }
 });
-
-
 
 
 // ===== API: TRIPS TODAY (with HK date & hour filters) =====
