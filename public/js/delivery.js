@@ -166,14 +166,14 @@ function updateOverviewFromSimple(simple) {
   }
 
 
-// ==== bottom panel: 2-row planned vs actual timeline ====
+// ==== bottom panel: 3-row hour / planned / actual timeline ====
 function updatePerformanceTimeline(sum, plan) {
   const perfPanel = document.getElementById('projectPerformance');
   if (!perfPanel) return;
 
   const buckets = sum.hourlyTimeline || [];
 
-  // Fixed display window: 7–23 hours (7–8, 8–9, ..., 23–24)
+  // Fixed window: 7–23 (17 buckets: 7–8, 8–9, ..., 23–24)
   const displayStart = 7;
   const displayEnd = 24; // exclusive
   const totalHours = displayEnd - displayStart; // 17
@@ -185,20 +185,22 @@ function updatePerformanceTimeline(sum, plan) {
     return display + ' ' + suffix;
   }
 
-  // Build a lookup for buckets by hour
+  // Map backend buckets by hour
   const bucketMap = {};
   buckets.forEach(b => { bucketMap[b.hour] = b; });
 
-  // Transparent background label row (one cell per bucket)
-  let hourMarksHtml =
-    '<div style="display:flex;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
+  // 1) Hour row (transparent background, 17 flex cells)
+  let hoursRowHtml =
+    '<div class="timeline-row">' +
+      '<div class="timeline-label"></div>' +
+      '<div class="timeline-track" style="display:flex;">';
   for (let h = displayStart; h < displayEnd; h++) {
-    hourMarksHtml +=
-      '<div style="flex:1;text-align:center;opacity:0.8;">' +
+    hoursRowHtml +=
+      '<div style="flex:1;text-align:center;font-size:11px;color:#9ca3af;">' +
         formatHourLabel(h) +
       '</div>';
   }
-  hourMarksHtml += '</div>';
+  hoursRowHtml += '</div></div>';
 
   function buildRow(label, type) {
     let rowHtml =
@@ -214,9 +216,11 @@ function updatePerformanceTimeline(sum, plan) {
       const isFuture = h > nowHourInt;
 
       if (type === 'planned') {
+        const planned = bucket.planned || 0;
         rowHtml +=
-          '<div class="timeline-hour planned" style="flex:1;border-right:1px solid rgba(255,255,255,0.1);">' +
-            (bucket.planned || 0) +
+          '<div class="timeline-hour planned" ' +
+          'style="flex:1;border-right:1px solid rgba(255,255,255,0.12);">' +
+            planned +
           '</div>';
       } else {
         let planned = bucket.planned || plan.trucksPerHour;
@@ -224,9 +228,9 @@ function updatePerformanceTimeline(sum, plan) {
         let text = '';
         let cls = 'actual-ok';
 
-        // Delay bucket: planned 0, actual negative => 0/N
-        if (planned === 0 && actual < 0) {
-          const delayCount = Math.abs(actual);
+        // Delay bucket: planned == 0 and actual < 0 (from backend)
+        if ((bucket.planned || 0) === 0 && bucket.actual < 0) {
+          const delayCount = Math.abs(bucket.actual);
           planned = delayCount;
           actual = 0;
           text = '0/' + delayCount;
@@ -246,13 +250,13 @@ function updatePerformanceTimeline(sum, plan) {
 
         rowHtml +=
           '<div class="timeline-hour ' + cls + '" ' +
-          'style="flex:1;border-right:1px solid rgba(255,255,255,0.1);">' +
+          'style="flex:1;border-right:1px solid rgba(255,255,255,0.12);">' +
             text +
           '</div>';
       }
     }
 
-    // current time marker (orange) over the flex track
+    // orange “now” marker across the flex track
     const nowFloat = now.getHours() + now.getMinutes() / 60;
     if (nowFloat >= displayStart && nowFloat <= displayEnd) {
       const posPct = ((nowFloat - displayStart) / totalHours) * 100;
@@ -267,12 +271,13 @@ function updatePerformanceTimeline(sum, plan) {
   }
 
   const html =
-    hourMarksHtml +
+    hoursRowHtml +
     buildRow('Planned', 'planned') +
     buildRow('Actual', 'actual');
 
   perfPanel.innerHTML = html;
 }
+
 
 
 // === Truck list, separate helper ===
