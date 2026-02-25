@@ -180,9 +180,14 @@ function updatePerformanceTimeline(sum, plan) {
 
   const startHour = buckets[0].hour;
   const endHour = buckets[buckets.length - 1].hour;
-  // We will render bars for h in [startHour, endHour) and use endHour only for the last label
-  const totalHours = endHour - startHour; // not +1
+  const totalHours = endHour - startHour;
 
+  function formatHourLabel(h) {
+    const hour = ((h % 24) + 24) % 24;
+    const suffix = hour < 12 ? 'am' : 'pm';
+    const display = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
+    return display + ' ' + suffix;
+  }
   // header
   let hourMarksHtml =
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
