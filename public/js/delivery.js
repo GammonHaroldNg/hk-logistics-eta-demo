@@ -180,19 +180,13 @@ function updatePerformanceTimeline(sum, plan) {
 
   const startHour = buckets[0].hour;
   const endHour = buckets[buckets.length - 1].hour;
-  const totalHours = endHour - startHour + 1;
-
-  function formatHourLabel(h) {
-    const hour = ((h % 24) + 24) % 24;
-    const suffix = hour < 12 ? 'am' : 'pm';
-    const display = hour === 0 ? 12 : (hour > 12 ? hour - 12 : hour);
-    return display + ' ' + suffix;
-  }
+  // We will render bars for h in [startHour, endHour) and use endHour only for the last label
+  const totalHours = endHour - startHour; // not +1
 
   // header
   let hourMarksHtml =
     '<div style="display:flex;justify-content:space-between;font-size:11px;color:#9ca3af;margin-bottom:4px;">';
-  for (let h = startHour; h <= endHour; h++) {
+  for (let h = startHour; h <= endHour; h++) {      // labels still inclusive
     hourMarksHtml += '<span style="flex:1;text-align:center;">' + formatHourLabel(h) + '</span>';
   }
   hourMarksHtml += '</div>';
@@ -206,7 +200,7 @@ function updatePerformanceTimeline(sum, plan) {
     const now = new Date();
     const nowHourInt = now.getHours();
 
-    for (let h = startHour; h <= endHour; h++) {
+    for (let h = startHour; h < endHour; h++) {     // bars: end exclusive
       const bucket = buckets.find(b => b.hour === h) || { planned: 0, actual: 0 };
       const widthPct = (1 / totalHours) * 100;
       const leftPct = ((h - startHour) / totalHours) * 100;
@@ -248,7 +242,7 @@ function updatePerformanceTimeline(sum, plan) {
 
     const nowFloat = now.getHours() + now.getMinutes() / 60;
     if (nowFloat >= startHour && nowFloat <= endHour) {
-      const posPct = ((nowFloat - startHour) / (endHour - startHour)) * 100;
+      const posPct = ((nowFloat - startHour) / totalHours) * 100;
       rowHtml +=
         '<div class="timeline-current" style="left:' + posPct + '%;"></div>';
     }
@@ -256,6 +250,7 @@ function updatePerformanceTimeline(sum, plan) {
     rowHtml += '</div></div>';
     return rowHtml;
   }
+
 
   const html =
     hourMarksHtml +
