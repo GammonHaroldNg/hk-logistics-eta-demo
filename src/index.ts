@@ -46,7 +46,12 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 let lastTrafficUpdateTime: Date | null = null;
 
-import { PROJECT_ROUTE_IDS } from './constants/projectRoutes';
+import {
+  PROJECT_ROUTE_IDS,
+  PROJECT_PATHS,
+  PathId,
+} from './constants/projectRoutes';
+
 
 
 // ===== HELPERS =====
@@ -61,25 +66,25 @@ function segDist(a: number[], b: number[]): number {
   return dx * dx + dy * dy;
 }
 
-function stitchProjectRoutes(): { coordinates: number[][]; segmentCount: number } | null {
+function stitchPath(routeIds: number[]): { coordinates: number[][]; segmentCount: number } | null {
   const allCorridors = getAllCorridors();
   const segments: Array<{ routeId: number; coords: number[][] }> = [];
 
-  for (const routeId of PROJECT_ROUTE_IDS) {
+  for (const routeId of routeIds) {
     const corridor: any = allCorridors[routeId];
     if (!corridor || !corridor.geometry) continue;
     const geomType: string = corridor.geometry.type;
     const geomCoords: any = corridor.geometry.coordinates;
 
     const coords: number[][] = [];
-    if (geomType === 'MultiLineString') {
+    if (geomType === "MultiLineString") {
       for (let li = 0; li < geomCoords.length; li++) {
         const line: any = geomCoords[li];
         for (let ci = 0; ci < line.length; ci++) {
           coords.push(line[ci]);
         }
       }
-    } else if (geomType === 'LineString') {
+    } else if (geomType === "LineString") {
       for (let ci = 0; ci < geomCoords.length; ci++) {
         coords.push(geomCoords[ci]);
       }
@@ -249,52 +254,51 @@ async function updateTrafficData(): Promise<void> {
       };
     }
 
-    // 1) Auto‑init delivery session so routeGeometry + config exist
-    const stitched = stitchProjectRoutes();
-    if (stitched && stitched.coordinates.length > 0) {
-      const mergedGeometry = {
-        type: 'LineString' as const,
-        coordinates: stitched.coordinates,
-      };
+    // 1) Auto‑init delivery session so path geometries + config exist
+    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
+      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
+      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
+      FUTURE_PATH: stitchPath(PROJECT_PATHS.FUTURE_PATH),
+    };
 
+    const base = pathGeometries.GAMMON_TM;
+    if (base && base.coordinates.length > 0) {
       const targetConfig = await loadTodayDeliveryTarget();
 
-        const targetVolume = targetConfig?.targetVolume ?? 600;
-        const trucksPerHour = targetConfig?.trucksPerHour ?? 12;
+      const targetVolume = targetConfig?.targetVolume ?? 600;
+      const trucksPerHour = targetConfig?.trucksPerHour ?? 12;
 
-        // optional: use work_start_hour as session startTime
-        const startTime =
-          targetConfig?.startTime
-            ? new Date(
-                `${(new Date())
-                  .toISOString()
-                  .slice(0, 10)}T${targetConfig.startTime}`
-              )
-            : new Date();
+      const startTime =
+        targetConfig?.startTime
+          ? new Date(
+              `${new Date().toISOString().slice(0, 10)}T${targetConfig.startTime}`,
+            )
+          : new Date();
 
-        startDeliverySession(
-          {
-            routeId: 0,
-            targetVolume,
-            volumePerTruck: 8,
-            trucksPerHour,
-            startTime,
-            defaultSpeed: 40,
-          },
-          mergedGeometry,
-          stitched.segmentCount,
-        );
-
-        console.log(
-          'Auto delivery session initialized with DB target:',
+      startDeliverySession(
+        {
+          routeId: 0,
           targetVolume,
-          'm³,',
+          volumePerTruck: 8,
           trucksPerHour,
-          'trucks/hr',
-        );
-      } else {
-        console.warn('No project route geometry found for auto init');
-      }
+          startTime,
+          defaultSpeed: 40,
+          // truckService will now also expect pathGeometries; you’ll add that there
+        },
+        pathGeometries,
+      );
+
+      console.log(
+        'Auto delivery session initialized with DB target:',
+        targetVolume,
+        'm³,',
+        trucksPerHour,
+        'trucks/hr',
+      );
+    } else {
+      console.warn('No Gammon TM path geometry found for auto init');
+    }
+
 
 
     // existing WFS enrichment
@@ -451,7 +455,7 @@ app.get('/api/routes', (req: any, res: any) => {
       .filter(([routeIdStr]) => {
         const routeId = Number(routeIdStr);
         if (mode === 'focused') {
-          return PROJECT_ROUTE_IDS.has(routeId);
+          return PROJECT_ROUTE_IDS.includes(routeId);
         }
         return true;
       })
@@ -623,24 +627,29 @@ app.post('/api/delivery/start', (req: any, res: any) => {
     const trucksPerHour = req.body.trucksPerHour || 12;
     const defaultSpeed = req.body.defaultSpeed || 40;
 
-    const stitched = stitchProjectRoutes();
-    if (!stitched || stitched.coordinates.length === 0) {
-      return res.status(400).json({ error: 'No project route geometry found' });
-    }
-
-    const mergedGeometry = {
-      type: 'LineString' as const,
-      coordinates: stitched.coordinates
+    // For now, always stitch all known paths; later you can choose per request
+    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
+      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
+      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
+      FUTURE_PATH: stitchPath(PROJECT_PATHS.FUTURE_PATH),
     };
 
-    const result = startDeliverySession({
-      routeId: 0,
-      targetVolume: targetVolume,
-      volumePerTruck: volumePerTruck,
-      trucksPerHour: trucksPerHour,
-      startTime: new Date(),
-      defaultSpeed: defaultSpeed
-    }, mergedGeometry, stitched.segmentCount);
+    const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+    if (!base || base.coordinates.length === 0) {
+      return res.status(400).json({ error: 'No path geometry found' });
+    }
+
+    const result = startDeliverySession(
+      {
+        routeId: 0,
+        targetVolume,
+        volumePerTruck,
+        trucksPerHour,
+        startTime: new Date(),
+        defaultSpeed,
+      },
+      pathGeometries,
+    );
 
     res.json(result);
   } catch (error) {
@@ -649,18 +658,6 @@ app.post('/api/delivery/start', (req: any, res: any) => {
   }
 });
 
-app.get('/api/delivery/status', (req: any, res: any) => {
-  try {
-    const status = getDeliveryStatus();
-    if (!status) {
-      return res.json({ running: false, message: 'No active delivery session' });
-    }
-    res.json({ running: true, ...status });
-  } catch (error) {
-    console.error('Error in /api/delivery/status:', error);
-    res.status(500).json({ error: String(error) });
-  }
-});
 
 app.post('/api/delivery/stop', (req: any, res: any) => {
   try {

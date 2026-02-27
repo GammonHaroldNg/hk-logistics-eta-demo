@@ -1,7 +1,12 @@
 import { calculateRouteDistance, interpolatePosition } from './etaService';
 import { corridors } from './tdas';
 import { getAllCorridors } from './corridorService';
-import { PROJECT_ROUTE_IDS } from '../constants/projectRoutes';
+import {
+  PROJECT_ROUTE_IDS,
+  PROJECT_PATHS,
+  PathId,
+} from '../constants/projectRoutes';
+
 
 
 // ===== CONSTANTS =====
@@ -12,6 +17,7 @@ export interface ConcreteTruck {
   truckId: string;
   truckNumber: number;
   routeId: number;
+  pathId: PathId;              // NEW
   status: 'en-route' | 'arrived' | 'waiting';
   currentPosition: [number, number];
   progressRatio: number;
@@ -43,7 +49,9 @@ export interface DeliveryConfig {
   trucksPerHour: number;
   startTime: Date;
   defaultSpeed: number;
+  pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null>;
 }
+
 
 // ===== STATE =====
 let config: DeliveryConfig | null = null;
@@ -51,30 +59,32 @@ let activeTrucks: Map<string, ConcreteTruck> = new Map();
 let deliveryLog: DeliveryRecord[] = [];
 let nextTruckNumber = 1;
 let nextDispatchTime: Date | null = null;
-let routeGeometry: any = null;
-let corridorSegmentCount = 0;
 let isRunning = false;
+// no single routeGeometry/corridorSegmentCount anymore
+
 const tripToTruckId: Map<string, string> = new Map();
 const AUTO_DISPATCH_ENABLED = false;
 
 // ===== SPEED: average TDAS capped at mixer max =====
-function getAverageProjectSpeed(defaultSpeed: number): number {
+function getPathAverageSpeed(pathId: PathId, defaultSpeed: number): number {
   const allCorridors = getAllCorridors();
+  const routeIds = PROJECT_PATHS[pathId];
+
   let totalWeightedSpeed = 0;
   let totalDistance = 0;
 
-  for (const routeId of PROJECT_ROUTE_IDS) {
+  for (const routeId of routeIds) {
     const tdasData = corridors[routeId];
     const corridor: any = allCorridors[routeId];
-
     if (!corridor || !corridor.geometry) continue;
 
     const segDist = calculateRouteDistance(corridor.geometry);
     if (segDist <= 0) continue;
 
-    const speed = (tdasData && tdasData.speed > 0)
-      ? Math.min(tdasData.speed, MIXER_MAX_SPEED)
-      : Math.min(defaultSpeed, MIXER_MAX_SPEED);
+    const speed =
+      tdasData && tdasData.speed > 0
+        ? Math.min(tdasData.speed, MIXER_MAX_SPEED)
+        : Math.min(defaultSpeed, MIXER_MAX_SPEED);
 
     totalWeightedSpeed += speed * segDist;
     totalDistance += segDist;
@@ -84,63 +94,82 @@ function getAverageProjectSpeed(defaultSpeed: number): number {
   return totalWeightedSpeed / totalDistance;
 }
 
+
 // ===== INIT =====
 export function startDeliverySession(
-  sessionConfig: DeliveryConfig,
-  geometry: any,
-  segmentCount: number = 1
-): { message: string; totalTrucksNeeded: number; intervalMinutes: number; totalDistance: string; segmentCount: number } {
+  sessionConfig: Omit<DeliveryConfig, 'pathGeometries'>,
+  pathGeometries: DeliveryConfig['pathGeometries'],
+): {
+  message: string;
+  totalTrucksNeeded: number;
+  intervalMinutes: number;
+  totalDistance: string;
+  segmentCount: number;
+} {
   activeTrucks.clear();
   deliveryLog = [];
   nextTruckNumber = 1;
   isRunning = true;
 
-  config = sessionConfig;
-  routeGeometry = geometry;
-  corridorSegmentCount = segmentCount;
+  config = { ...sessionConfig, pathGeometries };
+
+  const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+  const totalDist = base ? calculateRouteDistance(base.coordinates) : 0;
+  const segmentCount = base ? base.segmentCount : 0;
 
   const intervalMinutes = 60 / config.trucksPerHour;
   const totalTrucksNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
-  const totalDist = calculateRouteDistance(geometry);
 
   nextDispatchTime = new Date(config.startTime);
-  dispatchTruck();
+  // keep or drop autodispatch depending on AUTO_DISPATCH_ENABLED
+  if (AUTO_DISPATCH_ENABLED) {
+    dispatchTruck('GAMMON_TM');
+  }
 
   return {
-    message: 'Delivery started: ' + totalTrucksNeeded + ' trucks needed, 1 every ' + intervalMinutes + ' min, ' + totalDist.toFixed(1) + ' km corridor',
+    message:
+      'Delivery started: ' +
+      totalTrucksNeeded +
+      ' trucks needed, 1 every ' +
+      intervalMinutes +
+      ' min, ' +
+      totalDist.toFixed(1) +
+      ' km corridor',
     totalTrucksNeeded,
     intervalMinutes,
     totalDistance: totalDist.toFixed(1),
-    segmentCount
+    segmentCount,
   };
 }
 
-// ===== DISPATCH =====
-function dispatchTruck(): ConcreteTruck | null {
-  if (!AUTO_DISPATCH_ENABLED) return null;        // new line
 
-  if (!config || !routeGeometry || !isRunning) return null;
+// ===== DISPATCH =====
+function dispatchTruck(pathId: PathId): ConcreteTruck | null {
+  if (!config || !isRunning) return null;
+
+  const geomInfo = config.pathGeometries[pathId];
+  if (!geomInfo || !geomInfo.coordinates || geomInfo.coordinates.length === 0) return null;
 
   const totalNeeded = Math.ceil(config.targetVolume / config.volumePerTruck);
   const totalDispatched = nextTruckNumber - 1;
   if (totalDispatched >= totalNeeded) return null;
 
-  const totalDist = calculateRouteDistance(routeGeometry);
+  const totalDist = calculateRouteDistance(geomInfo.coordinates);
   const now = new Date();
-  const currentSpeed = getAverageProjectSpeed(config.defaultSpeed);
+  const currentSpeed = getPathAverageSpeed(pathId, config.defaultSpeed);
   const travelTimeSeconds = (totalDist / currentSpeed) * 3600;
   const estimatedArrival = new Date(now.getTime() + travelTimeSeconds * 1000);
 
-  const coords = routeGeometry.coordinates || [];
-  const startPos: [number, number] = coords.length > 0
-    ? [coords[0]![0]!, coords[0]![1]!]
-    : [0, 0];
+  const coords = geomInfo.coordinates;
+  const startPos: [number, number] =
+    coords.length > 0 ? [coords[0]![0]!, coords[0]![1]!] : [0, 0];
 
   const truckId = `CMX-${String(nextTruckNumber).padStart(3, '0')}`;
   const truck: ConcreteTruck = {
     truckId,
     truckNumber: nextTruckNumber,
     routeId: config.routeId,
+    pathId,
     status: 'en-route',
     currentPosition: startPos,
     progressRatio: 0,
@@ -160,36 +189,51 @@ function dispatchTruck(): ConcreteTruck | null {
   nextDispatchTime = new Date(now.getTime() + intervalMs);
 
   console.log(
-    'Dispatched ' + truckId +
-      ' | Speed: ' + currentSpeed.toFixed(1) +
-      ' km/h | ETA: ' + Math.round(travelTimeSeconds) + 's'
+    'Dispatched ' +
+      truckId +
+      ' | Path: ' +
+      pathId +
+      ' | Speed: ' +
+      currentSpeed.toFixed(1) +
+      ' km/h | ETA: ' +
+      Math.round(travelTimeSeconds) +
+      's',
   );
   return truck;
 }
 
 
+
 // ===== TICK =====
 export function tickDelivery(dtSeconds: number): void {
-  if (!config || !routeGeometry || !isRunning) return;
+  if (!config || !isRunning) return;
 
   const now = new Date();
 
-  if (nextDispatchTime && now >= nextDispatchTime) {
-    dispatchTruck();
+  if (nextDispatchTime && now >= nextDispatchTime && AUTO_DISPATCH_ENABLED) {
+    // default auto‑dispatch uses Gammon path; later you’ll use ClickUp to choose path
+    dispatchTruck('GAMMON_TM');
   }
 
   for (const [truckId, truck] of activeTrucks.entries()) {
     if (truck.status !== 'en-route') continue;
 
+    const geomInfo = config.pathGeometries[truck.pathId];
+    if (!geomInfo || !geomInfo.coordinates || geomInfo.coordinates.length === 0) continue;
+
     truck.elapsedSeconds += dtSeconds;
 
-    const liveSpeed = getAverageProjectSpeed(config.defaultSpeed);
+    const liveSpeed = getPathAverageSpeed(truck.pathId, config.defaultSpeed);
     truck.currentSpeed = liveSpeed;
 
     const distCovered = (liveSpeed * truck.elapsedSeconds) / 3600;
     const newProgress = Math.min(distCovered / truck.totalDistance, 1);
-    truck.progressRatio = Math.max(truck.progressRatio, newProgress); // monotonic
-    truck.currentPosition = interpolatePosition(routeGeometry, truck.progressRatio);
+    truck.progressRatio = Math.max(truck.progressRatio, newProgress);
+
+    truck.currentPosition = interpolatePosition(
+      { type: 'LineString', coordinates: geomInfo.coordinates },
+      truck.progressRatio,
+    );
 
     const remainingDist = truck.totalDistance * (1 - truck.progressRatio);
     const remainingSeconds = (remainingDist / liveSpeed) * 3600;
@@ -200,6 +244,7 @@ export function tickDelivery(dtSeconds: number): void {
     }
   }
 }
+
 
 function completeTruck(truckId: string, now: Date): void {
   const truck = activeTrucks.get(truckId);
@@ -231,10 +276,13 @@ function completeTruck(truckId: string, now: Date): void {
 }
 
 function getBaselineTravelTime(): number {
-  if (!config || !routeGeometry) return 1800;
-  const dist = calculateRouteDistance(routeGeometry);
+  if (!config) return 1800;
+  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  if (!base) return 1800;
+  const dist = calculateRouteDistance(base.coordinates);
   return (dist / Math.min(config.defaultSpeed, MIXER_MAX_SPEED)) * 3600;
 }
+
 
 // ===== THROUGHPUT ANALYSIS =====
 function getThroughputAnalysis(): {
@@ -350,10 +398,15 @@ export function getDeliveryStatus() {
       trucksPerHour: config.trucksPerHour,
       routeId: config.routeId,
       startTime: config.startTime.toISOString(),
-      totalSegments: corridorSegmentCount,
-      totalDistance: routeGeometry ? calculateRouteDistance(routeGeometry).toFixed(1) : '0',
-      mixerSpeedCap: MIXER_MAX_SPEED
+      totalSegments: (config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY)?.segmentCount ?? 0,
+      totalDistance: (() => {
+        const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+        if (!base) return '0';
+        return calculateRouteDistance(base.coordinates).toFixed(1);
+      })(),
+      mixerSpeedCap: MIXER_MAX_SPEED,
     },
+
     progress: {
       delivered,
       remaining: Math.max(0, config.targetVolume - delivered),
@@ -413,11 +466,10 @@ export function resetDelivery(): void {
   nextTruckNumber = 1;
   nextDispatchTime = null;
   config = null;
-  routeGeometry = null;
-  corridorSegmentCount = 0;
   isRunning = false;
   console.log('Delivery session reset');
 }
+
 
 export interface DbTrip {
   id: string;
@@ -429,28 +481,42 @@ export interface DbTrip {
 }
 
 function ensureConfigForDb(): void {
-  if (!config && routeGeometry) {
-    // Minimal config so throughput computations still work
+  if (!config) {
+    const dummyCoords: number[][] = [];
     config = {
       routeId: 0,
       targetVolume: 600,
       volumePerTruck: 8,
       trucksPerHour: 12,
-      startTime: new Date(),        // will be used only for windows
+      startTime: new Date(),
       defaultSpeed: 40,
+      pathGeometries: {
+        GAMMON_TM: { coordinates: dummyCoords, segmentCount: dummyCoords.length },
+        HKC_TY: null,
+        FUTURE_PATH: null,
+      },
     };
     isRunning = true;
   }
 }
 
-export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: number): ConcreteTruck | null {
-  if (!routeGeometry) return null;
-  if (!trip.actual_start_at) return null;
+
+
+export function addTruckFromTrip(
+  trip: DbTrip,
+  totalDist: number,
+  speedKmh: number,
+): ConcreteTruck | null {
+  if (!config) return null;
+  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  if (!base || !base.coordinates) return null;
 
   ensureConfigForDb();
+  if (!trip.actual_start_at) return null;
 
   const startTime = new Date(trip.actual_start_at);
   const now = new Date();
+
 
   const speed = Math.min(speedKmh, MIXER_MAX_SPEED);
   const travelTimeSeconds = (totalDist / speed) * 3600;
@@ -464,7 +530,8 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
     if (existing) {
       existing.progressRatio = Math.max(existing.progressRatio, progressRatio);
       existing.currentPosition =
-        interpolatePosition(routeGeometry, existing.progressRatio) ?? existing.currentPosition;
+        interpolatePosition({ type: 'LineString', coordinates: base.coordinates }, existing.progressRatio) ??
+        existing.currentPosition;
       return existing;
     }
   }
@@ -475,7 +542,7 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
   }
 
   // NEW: define startPos for DB trucks as well
-  const coords = routeGeometry.coordinates || [];
+  const coords = base.coordinates || [];
   const startPos: [number, number] = coords.length > 0
     ? [coords[0]![0]!, coords[0]![1]!]
     : [0, 0];
@@ -486,8 +553,10 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
     truckId,
     truckNumber: ++nextTruckNumber,
     routeId: config!.routeId,
+    pathId: 'GAMMON_TM', // DB trips assumed on Gammon path for now
     status: progressRatio >= 1 ? 'arrived' : 'en-route',
-    currentPosition: interpolatePosition(routeGeometry, progressRatio) ?? startPos,
+    currentPosition:
+      interpolatePosition({ type: 'LineString', coordinates: base.coordinates }, progressRatio) ?? startPos,
     progressRatio,
     departureTime: startTime,
     arrivalTime: progressRatio >= 1 ? now : null,
@@ -497,6 +566,7 @@ export function addTruckFromTrip(trip: DbTrip, totalDist: number, speedKmh: numb
     currentSpeed: speed,
     concreteVolume: config!.volumePerTruck,
   };
+
 
   activeTrucks.set(truckId, truck);
   tripToTruckId.set(trip.id, truckId);
@@ -541,10 +611,13 @@ export function completeTruckFromDb(tripId: string, arrivalTime: Date): void {
 
 
 export async function hydrateFromTrips(trips: DbTrip[], defaultSpeedKmh: number): Promise<void> {
-  if (!routeGeometry) return;
   ensureConfigForDb();
+  if (!config) return;
 
-  const totalDist = calculateRouteDistance(routeGeometry);
+  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  if (!base) return;
+
+  const totalDist = calculateRouteDistance(base.coordinates);
   if (totalDist <= 0) return;
 
   for (const trip of trips) {
@@ -552,6 +625,7 @@ export async function hydrateFromTrips(trips: DbTrip[], defaultSpeedKmh: number)
     addTruckFromTrip(trip, totalDist, defaultSpeedKmh);
   }
 }
+
 
 
 export function isDeliveryRunning(): boolean {
