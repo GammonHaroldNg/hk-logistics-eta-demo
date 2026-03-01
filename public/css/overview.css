@@ -99,12 +99,12 @@ main {
 
 .route-id {
   font-weight: 600;
-  color: #1f2937;
+  color: #e5e7eb;
 }
 
 .route-status {
   font-size: 12px;
-  color: #6b7280;
+  color: #d1d5db;
   margin-top: 4px;
 }
 
@@ -233,8 +233,25 @@ main {
 #overviewPanel {
   display: flex;
   flex-direction: column;
-  flex: 1; /* ADD THIS - take all available space from parent */
-  min-height: 0; /* ADD THIS - critical for nested flexbox */
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-fixed-top {
+  flex-shrink: 0;
+}
+
+.panel-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-scroll .route-list-container {
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 #overviewPanel h3 {
@@ -269,7 +286,7 @@ main {
 }
 
 .eta-travel-title {
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   color: #f9fafb;
   margin: 0 0 10px;
@@ -278,23 +295,45 @@ main {
 .eta-travel-rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .eta-travel-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 14px;
+}
+
+.eta-travel-row.clickable {
+  cursor: pointer;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.eta-travel-row.clickable:hover {
+  background: #1f2937;
 }
 
 .eta-travel-label {
-  color: #9ca3af;
+  color: #e5e7eb;
 }
 
 .eta-travel-value {
   color: #3b82f6;
   font-weight: 600;
+}
+
+/* Permanent factory label under start markers */
+.factory-label-tooltip {
+  background: rgba(17, 24, 39, 0.95) !important;
+  border: 1px solid #4b5563 !important;
+  color: #f9fafb !important;
+  font-size: 12px !important;
+  padding: 4px 8px !important;
+  white-space: nowrap;
 }
 
 /* BOTTOM PERFORMANCE BAR – never overlap panel, reserve space */

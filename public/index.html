@@ -43,51 +43,50 @@
               <div class="title-accent-bar"></div>
 
               <div id="overviewPanel">
-                
-                <div class="panel-header-row">
-                  <h2>📊 Project Route Status</h2>
-                  <button class="btn-icon" id="refreshRoutesBtn" title="Refresh">
-                    ⟳
-                  </button>
-                </div>
+                <div class="panel-fixed-top">
+                  <div class="panel-header-row">
+                    <h2>📊 Project Route Status</h2>
+                    <button class="btn-icon" id="refreshRoutesBtn" title="Refresh">
+                      ⟳
+                    </button>
+                  </div>
 
-                <div class="stats-grid">
-                  <div class="stat-item filter-stat active" data-filter="GREEN" id="statGreen" onclick="toggleFilter('GREEN')">
-                    <span class="stat-label">Green</span>
-                    <span class="stat-value" id="greenCount">-</span>
-                  </div>
-                  <div class="stat-item filter-stat active" data-filter="YELLOW" id="statYellow" onclick="toggleFilter('YELLOW')">
-                    <span class="stat-label">Yellow</span>
-                    <span class="stat-value" id="yellowCount">-</span>
-                  </div>
-                  <div class="stat-item filter-stat active" data-filter="RED" id="statRed" onclick="toggleFilter('RED')">
-                    <span class="stat-label">Red</span>
-                    <span class="stat-value" id="redCount">-</span>
-                  </div>
-                  <div class="stat-item filter-stat" data-filter="NO DATA" id="statNoData" onclick="toggleFilter('NO DATA')">
-                    <span class="stat-label">No Data</span>
-                    <span class="stat-value" id="blueCount">-</span>
-                  </div>
-                </div>
-
-                <div class="eta-travel-card" id="etaTravelCard">
-                  <h3 class="eta-travel-title">⏱ Estimated travel time to site</h3>
-                  <div class="eta-travel-rows">
-                    <div class="eta-travel-row">
-                      <span class="eta-travel-label">Gammon TM Plant → Site</span>
-                      <span class="eta-travel-value" id="etaGammonTm">—</span>
+                  <div class="stats-grid">
+                    <div class="stat-item filter-stat active" data-filter="GREEN" id="statGreen" onclick="toggleFilter('GREEN')">
+                      <span class="stat-label">Green</span>
+                      <span class="stat-value" id="greenCount">-</span>
                     </div>
-                    <div class="eta-travel-row">
-                      <span class="eta-travel-label">HKC TY Plant → Site</span>
-                      <span class="eta-travel-value" id="etaHkcTy">—</span>
+                    <div class="stat-item filter-stat active" data-filter="YELLOW" id="statYellow" onclick="toggleFilter('YELLOW')">
+                      <span class="stat-label">Yellow</span>
+                      <span class="stat-value" id="yellowCount">-</span>
+                    </div>
+                    <div class="stat-item filter-stat active" data-filter="RED" id="statRed" onclick="toggleFilter('RED')">
+                      <span class="stat-label">Red</span>
+                      <span class="stat-value" id="redCount">-</span>
+                    </div>
+                    <div class="stat-item filter-stat" data-filter="NO DATA" id="statNoData" onclick="toggleFilter('NO DATA')">
+                      <span class="stat-label">No Data</span>
+                      <span class="stat-value" id="blueCount">-</span>
                     </div>
                   </div>
+
+                  <div class="eta-travel-card" id="etaTravelCard">
+                    <h3 class="eta-travel-title">⏱ Estimated travel time to site</h3>
+                    <div class="eta-travel-rows">
+                      <div class="eta-travel-row clickable" data-path-id="GAMMON_TM" onclick="zoomToPath('GAMMON_TM')" title="Zoom to route">
+                        <span class="eta-travel-label">Gammon TM Plant → Site</span>
+                        <span class="eta-travel-value" id="etaGammonTm">—</span>
+                      </div>
+                      <div class="eta-travel-row clickable" data-path-id="HKC_TY" onclick="zoomToPath('HKC_TY')" title="Zoom to route">
+                        <span class="eta-travel-label">HKC TY Plant → Site</span>
+                        <span class="eta-travel-value" id="etaHkcTy">—</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <h3 id="routeTitle">📍 Project Routes</h3>
-
-
-                  <!-- Scrollable route list container -->
+                <div class="panel-scroll">
+                  <h3 id="routeTitle">📍 Project Routes</h3>
                   <div class="route-list-container">
                     <div class="route-list" id="routeList">
                       <div class="loading">
@@ -95,12 +94,12 @@
                       </div>
                     </div>
                   </div>
-
                   <div class="last-update">
                     <strong>Last Update:</strong><br>
                     <span id="lastUpdate">-</span>
                   </div>
                 </div>
+              </div>
 
 
               <!-- Project simulation panel -->
@@ -142,6 +141,7 @@
       let projectMarkers = null;
       let activeFilters = new Set(['GREEN', 'YELLOW', 'RED']);
       let allProjectRoutes = [];
+      let pathStarts = {};  // { GAMMON_TM: { lat, lng, label }, HKC_TY: { ... } }
 
       function toggleFilter(filterType) {
         if (activeFilters.has(filterType)) {
@@ -587,21 +587,36 @@
           const data = await response.json();
           const gEl = document.getElementById('etaGammonTm');
           const hEl = document.getElementById('etaHkcTy');
-          if (gEl && data.GAMMON_TM != null) {
+          pathStarts = {};
+          if (data.GAMMON_TM != null) {
             const g = data.GAMMON_TM;
-            gEl.textContent = (typeof g === 'number' ? g : g.travelTimeMinutes) != null
-              ? (typeof g === 'number' ? g : g.travelTimeMinutes) + ' min'
-              : '—';
+            if (gEl) gEl.textContent = (typeof g === 'number' ? g : g.travelTimeMinutes) != null ? (typeof g === 'number' ? g : g.travelTimeMinutes) + ' min' : '—';
+            if (g.startPosition && g.label) pathStarts.GAMMON_TM = { lat: g.startPosition.lat, lng: g.startPosition.lng, label: g.label };
           }
-          if (hEl && data.HKC_TY != null) {
+          if (data.HKC_TY != null) {
             const h = data.HKC_TY;
-            hEl.textContent = (typeof h === 'number' ? h : h.travelTimeMinutes) != null
-              ? (typeof h === 'number' ? h : h.travelTimeMinutes) + ' min'
-              : '—';
+            if (hEl) hEl.textContent = (typeof h === 'number' ? h : h.travelTimeMinutes) != null ? (typeof h === 'number' ? h : h.travelTimeMinutes) + ' min' : '—';
+            if (h.startPosition && h.label) pathStarts.HKC_TY = { lat: h.startPosition.lat, lng: h.startPosition.lng, label: h.label };
           }
+          if (map && allRoutes && currentPanel === 'project') zoomToProjectRoutes();
         } catch (e) {
           console.warn('Route ETA load failed', e);
         }
+      }
+
+      function zoomToPath(pathId) {
+        if (!map || !allRoutes) return;
+        const features = allRoutes.filter(f => (f.properties?.PATH_IDS || []).includes(pathId));
+        if (!features.length) return;
+        const bounds = L.latLngBounds([]);
+        features.forEach(f => {
+          if (!f.geometry) return;
+          let allCoords = f.geometry.type === 'LineString' ? [f.geometry.coordinates] : (f.geometry.coordinates || []);
+          allCoords.forEach(coords => {
+            (coords || []).forEach(coord => { bounds.extend([coord[1], coord[0]]); });
+          });
+        });
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
       }
 
       function refreshData() {
@@ -630,9 +645,7 @@
           projectMarkers = L.featureGroup().addTo(map);
         }
 
-        // Your specific start and end coordinates
-        const startPoint = [22.41475986, 113.99064608];  // [lat, lng]
-        const endPoint = [22.51755036, 114.0741744];     // [lat, lng]
+        const endPoint = [22.51755036, 114.0741744];     // [lat, lng] – site
 
         const bounds = L.latLngBounds([]);
 
@@ -651,30 +664,34 @@
           });
         });
 
-        // Add start and end points to bounds
-        bounds.extend(startPoint);
         bounds.extend(endPoint);
 
-        // Add start marker (green with "S")
+        // Start marker icon (green "S")
         const startIcon = L.divIcon({
           className: 'custom-marker',
           html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">S</div>',
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         });
-        
-        L.marker(startPoint, { icon: startIcon })
-          .bindPopup('<b>🏭 Start Point</b><br>Concrete Plant<br>Coordinates: 22.41476, 113.99065')
-          .addTo(projectMarkers);
 
-        // Add end marker (red with "E")
+        // Two start markers (Gammon TM and HKC TY) with permanent label under marker – factory name only
+        ['GAMMON_TM', 'HKC_TY'].forEach(pathId => {
+          const start = pathStarts[pathId];
+          if (!start || start.lat == null || start.lng == null) return;
+          const pt = [start.lat, start.lng];
+          bounds.extend(pt);
+          const m = L.marker(pt, { icon: startIcon })
+            .bindTooltip(start.label || pathId, { permanent: true, direction: 'bottom', className: 'factory-label-tooltip', offset: [0, 14] })
+            .addTo(projectMarkers);
+        });
+
+        // End marker (red "E")
         const endIcon = L.divIcon({
           className: 'custom-marker',
           html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">E</div>',
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         });
-        
         L.marker(endPoint, { icon: endIcon })
           .bindPopup('<b>🏗️ End Point</b><br>Construction Site<br>Coordinates: 22.51755, 114.07417')
           .addTo(projectMarkers);

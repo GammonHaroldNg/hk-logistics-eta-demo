@@ -249,6 +249,9 @@ app.get('/api/routes', (req: any, res: any) => {
       .map(([routeIdStr, feature]: [string, any]) => {
         const routeId = Number(routeIdStr);
         const tdas = corridors[routeId];
+        const pathIds: string[] = [];
+        if (PROJECT_PATHS.GAMMON_TM.includes(routeId)) pathIds.push('GAMMON_TM');
+        if (PROJECT_PATHS.HKC_TY.includes(routeId)) pathIds.push('HKC_TY');
         return {
           type: 'Feature',
           properties: {
@@ -258,6 +261,7 @@ app.get('/api/routes', (req: any, res: any) => {
             TRAFFICSPEED: tdas ? tdas.speed : null,
             HASTDASDATA: !!tdas,
             ISPROJECT: PROJECT_ROUTE_IDS.includes(routeId),
+            PATH_IDS: pathIds,
           },
           geometry: feature.geometry
         };
@@ -325,13 +329,25 @@ app.get('/api/route-eta', (req: any, res: any) => {
   try {
     const pathGeometries = buildPathGeometries();
     const defaultSpeedKmh = CONFIG.DEFAULT_SPEED_KMH;
-    const result: Record<string, { distanceKm: number; travelTimeMinutes: number; speedKmh: number }> = {};
+    const result: Record<string, {
+      distanceKm: number;
+      travelTimeMinutes: number;
+      speedKmh: number;
+      startPosition?: { lng: number; lat: number };
+      label?: string;
+    }> = {};
+
+    const pathLabels: Record<string, string> = {
+      GAMMON_TM: 'Gammon Tuen Mun Plant',
+      HKC_TY: 'HKC Tsing Yi Plant',
+    };
 
     for (const pathId of ['GAMMON_TM', 'HKC_TY'] as PathId[]) {
       const path = pathGeometries[pathId];
       if (!path || !path.coordinates || path.coordinates.length < 2) {
         continue;
       }
+      const first = path.coordinates[0] as [number, number];
       const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
       const routeIds = PROJECT_PATHS[pathId] || [];
       let sumSpeed = 0;
@@ -347,7 +363,13 @@ app.get('/api/route-eta', (req: any, res: any) => {
       const speedKmh = countWithSpeed > 0 ? sumSpeed / countWithSpeed : defaultSpeedKmh;
       const travelTimeHours = distanceKm / speedKmh;
       const travelTimeMinutes = Math.round(travelTimeHours * 60);
-      result[pathId] = { distanceKm, travelTimeMinutes, speedKmh };
+      result[pathId] = {
+        distanceKm,
+        travelTimeMinutes,
+        speedKmh,
+        ...(first ? { startPosition: { lng: first[0], lat: first[1] } } : {}),
+        ...(pathLabels[pathId] ? { label: pathLabels[pathId] } : {}),
+      };
     }
     res.json(result);
   } catch (error) {
