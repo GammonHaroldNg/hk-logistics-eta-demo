@@ -10,7 +10,7 @@ import {
 
 
 // ===== CONSTANTS =====
-const MIXER_MAX_SPEED = 60; // km/h — loaded concrete truck cap in HK
+const MIXER_MAX_SPEED = 70; // km/h — loaded concrete truck cap in HK
 
 // ===== TYPES =====
 export interface ConcreteTruck {
