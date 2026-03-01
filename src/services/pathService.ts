@@ -9,10 +9,17 @@ function segDist(a: number[], b: number[]): number {
   return dx * dx + dy * dy;
 }
 
+/** Gammon Tuen Mun plant [lng, lat] – used as stitch start for GAMMON_TM path */
+const GAMMON_START: [number, number] = [113.99065, 22.41476];
+/** HKC Tsing Yi plant [lng, lat] – used as stitch start for HKC_TY path so segment order is plant → site */
+const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
+
 /**
  * Stitch corridor segments into a continuous path ordered by proximity.
+ * @param routeIds - ordered list of corridor route IDs for this path
+ * @param startLngLat - [lng, lat] of the path start (e.g. plant). Use the correct plant so segment order is start → site.
  */
-export function stitchPath(routeIds: number[]): StitchedPath {
+export function stitchPath(routeIds: number[], startLngLat?: [number, number]): StitchedPath {
   const allCorridors = getAllCorridors();
   const segments: Array<{ routeId: number; coords: number[][] }> = [];
 
@@ -43,7 +50,7 @@ export function stitchPath(routeIds: number[]): StitchedPath {
 
   if (segments.length === 0) return null;
 
-  const START: number[] = [113.99065, 22.41476];
+  const START: number[] = startLngLat ? [...startLngLat] : GAMMON_START;
   const used = new Set<number>();
   const orderedCoords: number[][] = [];
   let cursor = [...START];
@@ -99,11 +106,12 @@ export function stitchPath(routeIds: number[]): StitchedPath {
 
 /**
  * Build path geometries for all project paths.
+ * Each path is stitched from its plant start so segment order is plant → site and length matches real route.
  */
 export function buildPathGeometries(): Record<PathId, StitchedPath> {
   return {
-    GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
-    HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
+    GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM, GAMMON_START),
+    HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY, HKC_TY_START),
     FUTURE_PATH: stitchPath(PROJECT_PATHS.FUTURE_PATH),
   };
 }
