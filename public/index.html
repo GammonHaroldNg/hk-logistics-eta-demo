@@ -327,35 +327,34 @@
 
           const data = await response.json();
 
-          // Build traffic map and counters only from routes with TDAS
+          // Build traffic map from stateMap (all routes now included)
           trafficDataMap = {};
           let green = 0, yellow = 0, red = 0, blue = 0;
 
-          if (data.stateMap && allRoutes) {
-            const projectIds = new Set(
-              allRoutes
-                .filter(f => f.properties?.ISPROJECT)
-                .map(f => String(f.properties.ROUTEID))
-            );
-
-            green = yellow = red = blue = 0;
-            
-            // Count routes with TDAS data
+          if (data.stateMap) {
             for (const [routeId, state] of Object.entries(data.stateMap)) {
-              if (!projectIds.has(String(routeId))) continue;
-
               trafficDataMap[routeId] = state;
               if (state.state === 'GREEN') green++;
               else if (state.state === 'YELLOW') yellow++;
               else if (state.state === 'RED') red++;
+              else if (state.state === 'NO_DATA' || !state.state) blue++;
             }
-
-            // Count routes WITHOUT TDAS data (blue/no data)
-            for (const feature of allRoutes) {
-              if (!feature.properties?.ISPROJECT) continue;
-              const routeId = String(feature.properties.ROUTEID);
-              if (!trafficDataMap[routeId]) {
-                blue++;
+            // If we have routes, restrict counts to project routes only
+            if (allRoutes && allRoutes.length > 0) {
+              const projectIds = new Set(
+                allRoutes
+                  .filter(f => f.properties?.ISPROJECT)
+                  .map(f => String(f.properties.ROUTEID))
+              );
+              green = yellow = red = blue = 0;
+              for (const feature of allRoutes) {
+                if (!feature.properties?.ISPROJECT) continue;
+                const routeId = String(feature.properties.ROUTEID);
+                const state = trafficDataMap[routeId];
+                if (!state || state.state === 'NO_DATA') blue++;
+                else if (state.state === 'GREEN') green++;
+                else if (state.state === 'YELLOW') yellow++;
+                else if (state.state === 'RED') red++;
               }
             }
           }
@@ -547,8 +546,8 @@
 
 
       function getColorForState(state, isProject, hasTdas) {
-        // No TDAS: neutral grey
-        if (!hasTdas) return '#00B0F0';
+        // No TDAS or explicit NO_DATA: blue
+        if (!hasTdas || state === 'NO_DATA') return '#00B0F0';
 
         if (state === 'GREEN') return '#22c55e';
         if (state === 'YELLOW') return '#eab308';

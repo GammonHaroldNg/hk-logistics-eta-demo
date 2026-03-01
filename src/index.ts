@@ -297,14 +297,15 @@ app.get('/api/delivery-targets', async (req: any, res: any) => {
 
 app.get('/api/traffic', (req: any, res: any) => {
   try {
-    const stateMap: any = {};
+    const stateMap: Record<number, { state: string; speed: number | null }> = {};
     const filtered = getFilteredCorridors();
 
     for (const routeIdStr of Object.keys(filtered)) {
       const routeId = Number(routeIdStr);
       const tdas = corridors[routeId];
-      if (!tdas) continue;
-      stateMap[routeId] = { state: tdas.state, speed: tdas.speed };
+      stateMap[routeId] = tdas
+        ? { state: tdas.state, speed: tdas.speed }
+        : { state: 'NO_DATA', speed: null };
     }
 
     res.json({
