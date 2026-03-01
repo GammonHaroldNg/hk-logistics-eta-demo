@@ -2,28 +2,9 @@ import fs from 'fs';
 import path from 'path';
 // @ts-ignore
 import JSONStream from 'JSONStream';
+import { PROJECT_ROUTE_IDS } from '../constants/projectRoutes';
 
-// Replace any __dirname-based path with process.cwd()
-const geoJsonPath = path.join(
-  process.cwd(),
-  'src',
-  'data',
-  'project_route.geojson'
-);
-
-
-// Your 92 route IDs from Excel (project routes only)
-const PROJECT_ROUTE_IDS = [
-  94765, 96983, 118058, 93890, 93888, 164954, 94416, 94948, 272383, 94336,
-  95362, 93889, 94949, 94951, 94144, 94145, 97263, 110551, 96730, 279711,
-  97261, 96558, 95310, 96560, 97096, 96561, 95308, 97095, 96745, 95306, 97210, 96747,
-  96003, 96260, 96754, 95974, 96752, 97133, 95981, 96756, 95983, 96765,
-  95987, 96763, 95985, 279712, 95977, 96782, 111898, 98048, 96220, 96784,
-  93848, 260731, 96883, 96913, 97271, 96793, 94129, 96791, 96885, 93855,
-  96800, 279744, 96932, 96803, 93853, 96926, 96808, 96927, 93231, 93153,
-  93151, 96842, 93148, 96860, 93147, 93171, 93166, 110565, 110564, 111985,
-  165814, 111986, 111322, 122796, 122797, 165821, 260443, 165819, 285509, 285514
-];
+const geoJsonPath = path.join(process.cwd(), 'src', 'data', 'project_route.geojson');
 
 interface CorridorFeature {
   type: string;
