@@ -342,12 +342,15 @@ app.get('/api/route-eta', (req: any, res: any) => {
       HKC_TY: 'HKC Tsing Yi Plant',
     };
 
+    /** HKC TY plant start (correct coordinates). [lng, lat] */
+    const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
+
     for (const pathId of ['GAMMON_TM', 'HKC_TY'] as PathId[]) {
       const path = pathGeometries[pathId];
       if (!path || !path.coordinates || path.coordinates.length < 2) {
         continue;
       }
-      const first = path.coordinates[0] as [number, number];
+      const first = pathId === 'HKC_TY' ? HKC_TY_START : (path.coordinates[0] as [number, number]);
       const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
       const routeIds = PROJECT_PATHS[pathId] || [];
       let sumSpeed = 0;

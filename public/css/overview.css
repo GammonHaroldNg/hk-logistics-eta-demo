@@ -290,6 +290,13 @@ main {
   font-weight: 600;
   color: #f9fafb;
   margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eta-travel-title .eta-title-icon {
+  font-size: 1.1em;
 }
 
 .eta-travel-rows {
@@ -303,18 +310,37 @@ main {
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
+  gap: 10px;
 }
 
 .eta-travel-row.clickable {
   cursor: pointer;
-  padding: 6px 8px;
-  margin: 0 -8px;
-  border-radius: 6px;
-  transition: background 0.2s;
+  padding: 8px 12px;
+  margin: 0 -4px;
+  border-radius: 10px;
+  border: 1px solid #4b5563;
+  background: #1f2937;
+  transition: background 0.2s, border-color 0.2s;
 }
 
 .eta-travel-row.clickable:hover {
-  background: #1f2937;
+  background: #374151;
+  border-color: #3b82f6;
+}
+
+.eta-row-badge {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #22c55e;
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255,255,255,0.5);
 }
 
 .eta-travel-label {

@@ -71,13 +71,15 @@
                   </div>
 
                   <div class="eta-travel-card" id="etaTravelCard">
-                    <h3 class="eta-travel-title">⏱ Estimated travel time to site</h3>
+                    <h3 class="eta-travel-title"><span class="eta-title-icon">🛣️</span> Estimated Travel Time of Routes</h3>
                     <div class="eta-travel-rows">
-                      <div class="eta-travel-row clickable" data-path-id="GAMMON_TM" onclick="zoomToPath('GAMMON_TM')" title="Zoom to route">
+                      <div class="eta-travel-row clickable" data-path-id="GAMMON_TM" data-route-num="1" onclick="zoomToPath('GAMMON_TM')" title="Zoom to route">
+                        <span class="eta-row-badge">1</span>
                         <span class="eta-travel-label">Gammon TM Plant → Site</span>
                         <span class="eta-travel-value" id="etaGammonTm">—</span>
                       </div>
-                      <div class="eta-travel-row clickable" data-path-id="HKC_TY" onclick="zoomToPath('HKC_TY')" title="Zoom to route">
+                      <div class="eta-travel-row clickable" data-path-id="HKC_TY" data-route-num="2" onclick="zoomToPath('HKC_TY')" title="Zoom to route">
+                        <span class="eta-row-badge">2</span>
                         <span class="eta-travel-label">HKC TY Plant → Site</span>
                         <span class="eta-travel-value" id="etaHkcTy">—</span>
                       </div>
@@ -666,21 +668,24 @@
 
         bounds.extend(endPoint);
 
-        // Start marker icon (green "S")
-        const startIcon = L.divIcon({
-          className: 'custom-marker',
-          html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">S</div>',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14]
-        });
+        // Start marker icon: number in circle (1 = Gammon TM, 2 = HKC TY)
+        function startIcon(num) {
+          return L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">' + num + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14]
+          });
+        }
 
-        // Two start markers (Gammon TM and HKC TY) with permanent label under marker – factory name only
-        ['GAMMON_TM', 'HKC_TY'].forEach(pathId => {
+        const pathOrder = ['GAMMON_TM', 'HKC_TY'];
+        pathOrder.forEach((pathId, idx) => {
           const start = pathStarts[pathId];
           if (!start || start.lat == null || start.lng == null) return;
           const pt = [start.lat, start.lng];
           bounds.extend(pt);
-          const m = L.marker(pt, { icon: startIcon })
+          const num = idx + 1;
+          L.marker(pt, { icon: startIcon(num) })
             .bindTooltip(start.label || pathId, { permanent: true, direction: 'bottom', className: 'factory-label-tooltip', offset: [0, 14] })
             .addTo(projectMarkers);
         });
