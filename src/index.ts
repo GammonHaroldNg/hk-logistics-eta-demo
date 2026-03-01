@@ -471,7 +471,7 @@ app.get('/api/routes', (req: any, res: any) => {
             TDASSTATE: tdas ? tdas.state : 'UNKNOWN',
             TRAFFICSPEED: tdas ? tdas.speed : null,
             HASTDASDATA: !!tdas,
-            ISPROJECT: PROJECT_ROUTE_IDS.has(routeId),
+            ISPROJECT: PROJECT_ROUTE_IDS.includes(routeId),
           },
           geometry: feature.geometry
         };
