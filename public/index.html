@@ -76,12 +76,18 @@
                       <div class="eta-travel-row clickable" data-path-id="GAMMON_TM" data-route-num="1" onclick="zoomToPath('GAMMON_TM')" title="Zoom to route">
                         <span class="eta-row-badge">1</span>
                         <span class="eta-travel-label">Gammon TM Plant → Site</span>
-                        <span class="eta-travel-value" id="etaGammonTm">—</span>
+                        <span class="eta-travel-right">
+                          <span class="eta-travel-value" id="etaGammonTm">—</span>
+                          <span class="eta-travel-dist" id="etaGammonTmDist">—</span>
+                        </span>
                       </div>
                       <div class="eta-travel-row clickable" data-path-id="HKC_TY" data-route-num="2" onclick="zoomToPath('HKC_TY')" title="Zoom to route">
                         <span class="eta-row-badge">2</span>
                         <span class="eta-travel-label">HKC TY Plant → Site</span>
-                        <span class="eta-travel-value" id="etaHkcTy">—</span>
+                        <span class="eta-travel-right">
+                          <span class="eta-travel-value" id="etaHkcTy">—</span>
+                          <span class="eta-travel-dist" id="etaHkcTyDist">—</span>
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -589,16 +595,22 @@
           if (!response.ok) return;
           const data = await response.json();
           const gEl = document.getElementById('etaGammonTm');
+          const gDistEl = document.getElementById('etaGammonTmDist');
           const hEl = document.getElementById('etaHkcTy');
+          const hDistEl = document.getElementById('etaHkcTyDist');
           pathStarts = {};
           if (data.GAMMON_TM != null) {
             const g = data.GAMMON_TM;
-            if (gEl) gEl.textContent = (typeof g === 'number' ? g : g.travelTimeMinutes) != null ? (typeof g === 'number' ? g : g.travelTimeMinutes) + ' min' : '—';
+            const timeMin = (typeof g === 'number' ? g : g.travelTimeMinutes);
+            if (gEl) gEl.textContent = timeMin != null ? timeMin + ' min' : '—';
+            if (gDistEl && typeof g.distanceKm === 'number') gDistEl.textContent = g.distanceKm.toFixed(1) + ' km';
             if (g.startPosition && g.label) pathStarts.GAMMON_TM = { lat: g.startPosition.lat, lng: g.startPosition.lng, label: g.label };
           }
           if (data.HKC_TY != null) {
             const h = data.HKC_TY;
-            if (hEl) hEl.textContent = (typeof h === 'number' ? h : h.travelTimeMinutes) != null ? (typeof h === 'number' ? h : h.travelTimeMinutes) + ' min' : '—';
+            const timeMin = (typeof h === 'number' ? h : h.travelTimeMinutes);
+            if (hEl) hEl.textContent = timeMin != null ? timeMin + ' min' : '—';
+            if (hDistEl && typeof h.distanceKm === 'number') hDistEl.textContent = h.distanceKm.toFixed(1) + ' km';
             if (h.startPosition && h.label) pathStarts.HKC_TY = { lat: h.startPosition.lat, lng: h.startPosition.lng, label: h.label };
           }
           if (map && allRoutes && currentPanel === 'project') zoomToProjectRoutes();
