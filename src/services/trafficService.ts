@@ -65,18 +65,20 @@ export async function fetchTrafficSpeedMap(): Promise<Map<number, TrafficSegment
     }
 
     let validCount = 0;
+    let totalCount = 0;
     for (const segment of segments) {
       const segmentId = parseInt(segment.segmentid?.[0] || segment.segment_id?.[0] || '0', 10);
       const speed = parseFloat(segment.speed?.[0] || '0');
       const valid = segment.valid?.[0] === 'Y';
 
-      if (segmentId > 0 && valid) {
+      if (segmentId > 0 && speed >= 0) {
         speedMap.set(segmentId, { segmentId, speed, valid, captureDate, captureTime });
-        validCount++;
+        totalCount++;
+        if (valid) validCount++;
       }
     }
 
-    console.log(`✓ Fetched valid traffic data for ${validCount} segments`);
+    console.log(`✓ Fetched traffic data for ${totalCount} segments (${validCount} valid=Y)`);
 
     // Show first 5 segments as sample
     let count = 0;
