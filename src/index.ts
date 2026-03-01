@@ -54,7 +54,7 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 let lastTrafficUpdateTime: Date | null = null;
 
-import { PROJECT_ROUTE_IDS, PathId } from './constants/projectRoutes';
+import { PROJECT_ROUTE_IDS, PROJECT_PATHS, PathId } from './constants/projectRoutes';
 import { buildPathGeometries } from './services/pathService';
 
 // ===== HELPERS =====
@@ -315,6 +315,43 @@ app.get('/api/traffic', (req: any, res: any) => {
     });
   } catch (error) {
     console.error('Error in /api/traffic:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// ===== API: ROUTE ETA (estimated travel time per path to site) =====
+
+app.get('/api/route-eta', (req: any, res: any) => {
+  try {
+    const pathGeometries = buildPathGeometries();
+    const defaultSpeedKmh = CONFIG.DEFAULT_SPEED_KMH;
+    const result: Record<string, { distanceKm: number; travelTimeMinutes: number; speedKmh: number }> = {};
+
+    for (const pathId of ['GAMMON_TM', 'HKC_TY'] as PathId[]) {
+      const path = pathGeometries[pathId];
+      if (!path || !path.coordinates || path.coordinates.length < 2) {
+        continue;
+      }
+      const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
+      const routeIds = PROJECT_PATHS[pathId] || [];
+      let sumSpeed = 0;
+      let countWithSpeed = 0;
+      for (const routeId of routeIds) {
+        const tdas = corridors[routeId];
+        const speed = tdas?.speed;
+        if (typeof speed === 'number' && speed > 0) {
+          sumSpeed += speed;
+          countWithSpeed++;
+        }
+      }
+      const speedKmh = countWithSpeed > 0 ? sumSpeed / countWithSpeed : defaultSpeedKmh;
+      const travelTimeHours = distanceKm / speedKmh;
+      const travelTimeMinutes = Math.round(travelTimeHours * 60);
+      result[pathId] = { distanceKm, travelTimeMinutes, speedKmh };
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/route-eta:', error);
     res.status(500).json({ error: String(error) });
   }
 });

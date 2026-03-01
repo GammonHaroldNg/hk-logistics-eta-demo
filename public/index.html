@@ -70,9 +70,19 @@
                   </div>
                 </div>
 
-
-<!-- REMOVE the separate filter-buttons div entirely -->
-
+                <div class="eta-travel-card" id="etaTravelCard">
+                  <h3 class="eta-travel-title">⏱ Estimated travel time to site</h3>
+                  <div class="eta-travel-rows">
+                    <div class="eta-travel-row">
+                      <span class="eta-travel-label">Gammon TM Plant → Site</span>
+                      <span class="eta-travel-value" id="etaGammonTm">—</span>
+                    </div>
+                    <div class="eta-travel-row">
+                      <span class="eta-travel-label">HKC TY Plant → Site</span>
+                      <span class="eta-travel-value" id="etaHkcTy">—</span>
+                    </div>
+                  </div>
+                </div>
 
                 <h3 id="routeTitle">📍 Project Routes</h3>
 
@@ -251,6 +261,7 @@
         initMap();
         loadTrafficData();
         loadAndDisplayRoutes();
+        loadRouteEta();
 
         setTimeout(function () {
           if (currentPanel === 'project') renderDeliveryForm();
@@ -265,12 +276,13 @@
         }
 
         document.getElementById('projectBtn').onclick = () => {
+          setModeButtons('project');
           showProjectPanel();
           zoomToProjectRoutes();
         };
 
-
         document.getElementById('trackingBtn').onclick = () => {
+          setModeButtons('tracking');
           showTrackingMode();
         };
 
@@ -301,8 +313,20 @@
 
       let currentPanel = 'project'; // 'project' or 'status'
 
+      function setModeButtons(mode) {
+        const projectBtn = document.getElementById('projectBtn');
+        const trackingBtn = document.getElementById('trackingBtn');
+        if (mode === 'project') {
+          projectBtn.classList.add('active');
+          trackingBtn.classList.remove('active');
+        } else {
+          trackingBtn.classList.add('active');
+          projectBtn.classList.remove('active');
+        }
+      }
+
       function showProjectPanel() {
-        currentPanel = 'status'; // or 'project', but consistent
+        currentPanel = 'status';
         document.getElementById('projectPanel').style.display = 'none';
         document.getElementById('overviewPanel').style.display = 'block';
       }
@@ -376,6 +400,7 @@
           if (allRoutes && allRoutes.length > 0) {
             redrawRoutesOnMap();
           }
+          loadRouteEta();
         } catch (error) {
           console.error('✗ Traffic error:', error);
           document.getElementById('lastUpdate').textContent = 'Error';
@@ -555,10 +580,35 @@
         return '#4b5563'; // unknown
       }
 
+      async function loadRouteEta() {
+        try {
+          const response = await fetch(`${API_BASE}/api/route-eta`);
+          if (!response.ok) return;
+          const data = await response.json();
+          const gEl = document.getElementById('etaGammonTm');
+          const hEl = document.getElementById('etaHkcTy');
+          if (gEl && data.GAMMON_TM != null) {
+            const g = data.GAMMON_TM;
+            gEl.textContent = (typeof g === 'number' ? g : g.travelTimeMinutes) != null
+              ? (typeof g === 'number' ? g : g.travelTimeMinutes) + ' min'
+              : '—';
+          }
+          if (hEl && data.HKC_TY != null) {
+            const h = data.HKC_TY;
+            hEl.textContent = (typeof h === 'number' ? h : h.travelTimeMinutes) != null
+              ? (typeof h === 'number' ? h : h.travelTimeMinutes) + ' min'
+              : '—';
+          }
+        } catch (e) {
+          console.warn('Route ETA load failed', e);
+        }
+      }
+
       function refreshData() {
         console.log('🔄 Refreshing data...');
         loadTrafficData();
         loadAndDisplayRoutes();
+        loadRouteEta();
       }
 
       function goToTracking(routeId) {

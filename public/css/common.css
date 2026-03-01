@@ -165,14 +165,14 @@ main {
   z-index: 1000;
 }
 
-/* base style for both map mode buttons */
+/* base style for both map mode buttons – inactive = dark */
 .btn-mode {
   min-width: 160px;              /* same length */
   padding: 8px 14px;
   border-radius: 999px;
   border: none;
-  background: #111827;           /* same fill color */
-  color: #e5e7eb;
+  background: #1f2937;           /* dark when inactive */
+  color: #9ca3af;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -184,15 +184,21 @@ main {
 }
 
 .btn-mode:hover {
-  background: #1f2937;
+  background: #374151;
+  color: #e5e7eb;
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 
-/* active state: highlight slightly */
+/* active state: blue */
 .btn-mode.active {
   background: #3b82f6;
   color: #f9fafb;
+}
+
+.btn-mode.active:hover {
+  background: #2563eb;
+  color: #fff;
 }
 
 /* icon + text layout */
