@@ -330,7 +330,8 @@
       function showProjectPanel() {
         currentPanel = 'status';
         document.getElementById('projectPanel').style.display = 'none';
-        document.getElementById('overviewPanel').style.display = 'block';
+        const overviewPanel = document.getElementById('overviewPanel');
+        overviewPanel.style.display = 'flex';  // keep flex so panel-scroll gets height and route list is visible
       }
 
       function showTrackingMode() {

@@ -324,10 +324,14 @@ app.get('/api/traffic', (req: any, res: any) => {
 });
 
 // ===== API: ROUTE ETA (estimated travel time per path to site) =====
+// Speed is capped at 60 km/h (concrete truck max) and averaged by segment length (road length as weight).
+
+const MIXER_MAX_SPEED_KMH = 60;
 
 app.get('/api/route-eta', (req: any, res: any) => {
   try {
     const pathGeometries = buildPathGeometries();
+    const allCorridors = getAllCorridors();
     const defaultSpeedKmh = CONFIG.DEFAULT_SPEED_KMH;
     const result: Record<string, {
       distanceKm: number;
@@ -353,17 +357,25 @@ app.get('/api/route-eta', (req: any, res: any) => {
       const first = pathId === 'HKC_TY' ? HKC_TY_START : (path.coordinates[0] as [number, number]);
       const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
       const routeIds = PROJECT_PATHS[pathId] || [];
-      let sumSpeed = 0;
-      let countWithSpeed = 0;
+
+      // Length-weighted average speed, capped at 60 km/h (same as truckService)
+      let totalWeightedSpeed = 0;
+      let totalDistance = 0;
       for (const routeId of routeIds) {
+        const corridor = allCorridors[routeId] as { geometry?: { type: string; coordinates: number[][] } } | undefined;
+        if (!corridor?.geometry) continue;
+        const segDist = calculateRouteDistance(corridor.geometry);
+        if (segDist <= 0) continue;
         const tdas = corridors[routeId];
-        const speed = tdas?.speed;
-        if (typeof speed === 'number' && speed > 0) {
-          sumSpeed += speed;
-          countWithSpeed++;
-        }
+        const rawSpeed = tdas?.speed;
+        const speed =
+          typeof rawSpeed === 'number' && rawSpeed > 0
+            ? Math.min(rawSpeed, MIXER_MAX_SPEED_KMH)
+            : Math.min(defaultSpeedKmh, MIXER_MAX_SPEED_KMH);
+        totalWeightedSpeed += speed * segDist;
+        totalDistance += segDist;
       }
-      const speedKmh = countWithSpeed > 0 ? sumSpeed / countWithSpeed : defaultSpeedKmh;
+      const speedKmh = totalDistance > 0 ? totalWeightedSpeed / totalDistance : Math.min(defaultSpeedKmh, MIXER_MAX_SPEED_KMH);
       const travelTimeHours = distanceKm / speedKmh;
       const travelTimeMinutes = Math.round(travelTimeHours * 60);
       result[pathId] = {
