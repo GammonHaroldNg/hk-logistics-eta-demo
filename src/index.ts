@@ -60,6 +60,7 @@ import { buildPathGeometries } from './services/pathService';
 import {
   fetchFoldersForSpace,
   fetchListsForFolder,
+  fetchFolderlessListsForSpace,
   fetchListsWithDefault,
   fetchTripsFromList,
   isClickUpConfigured,
@@ -538,6 +539,45 @@ app.get('/api/clickup/status', (req: any, res: any) => {
       ? 'CLICKUP_API_TOKEN is set'
       : 'Set CLICKUP_API_TOKEN in Vercel → Settings → Environment Variables (Production + Preview), then redeploy.',
   });
+});
+
+// Debug: which space is used, folder count, list count (to fix "lists empty" = wrong space or no folders)
+app.get('/api/clickup/debug', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const spaceId = (req.query.spaceId as string) || CU_SPACE_ID;
+    const folders = await fetchFoldersForSpace(spaceId);
+    const firstFolder = folders[0];
+    let listCount = 0;
+    let listPreview: string[] = [];
+    let listSource: string;
+    if (firstFolder) {
+      const lists = await fetchListsForFolder(firstFolder.id);
+      listCount = lists.length;
+      listPreview = lists.slice(0, 5).map((l: any) => l.name || l.id);
+      listSource = 'first folder';
+    } else {
+      const lists = await fetchFolderlessListsForSpace(spaceId);
+      listCount = lists.length;
+      listPreview = lists.slice(0, 5).map((l: any) => l.name || l.id);
+      listSource = 'folderless (space has no folders)';
+    }
+    res.json({
+      spaceId,
+      source: process.env.CLICKUP_SPACE_ID ? 'CLICKUP_SPACE_ID (env)' : 'default (clickupConfig)',
+      folderCount: folders.length,
+      folders: folders.map((f: any) => ({ id: f.id, name: f.name })),
+      listCount,
+      listPreview,
+      listSource,
+      hint: listCount === 0
+        ? 'No lists in this space (and no folders). Check space ID and API access.'
+        : 'OK',
+    });
+  } catch (e: any) {
+    console.error('ClickUp debug error', e);
+    res.status(500).json({ error: e.message || 'Failed' });
+  }
 });
 
 app.get('/api/clickup/folders', async (req: any, res: any) => {

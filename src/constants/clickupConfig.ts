@@ -1,8 +1,8 @@
 // src/constants/clickupConfig.ts
 
-// Workspace / team and space
+// Workspace / team and space (override via env CLICKUP_SPACE_ID if your space is different)
 export const CU_TEAM_ID  = '90182255856';      // Workspace (team) ID
-export const CU_SPACE_ID = '901810032596';     // "Concrete Truck Schedule" space
+export const CU_SPACE_ID = process.env.CLICKUP_SPACE_ID || '901810032596';  // "Concrete Truck Schedule" fallback
 
 // Custom field IDs
 export const CU_FIELD_ID                  = '652549c7-f380-48d5-b58e-9e4dfa977cd5';

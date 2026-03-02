@@ -117,6 +117,20 @@ export async function fetchListsForFolder(folderId: string): Promise<ClickUpList
   }));
 }
 
+/** Lists directly under a space (no folder). Use when space has 0 folders. */
+export async function fetchFolderlessListsForSpace(spaceId: string = CU_SPACE_ID): Promise<ClickUpListItem[]> {
+  const res = await fetch(`${CLICKUP_API_BASE}/space/${spaceId}/list?archived=false`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`ClickUp folderless lists ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return (data.lists || []).map((l: any) => ({
+    id: l.id,
+    name: l.name || '',
+    ...(l.content != null ? { content: String(l.content) } : {}),
+  }));
+}
+
 /** Get today in HK as YYYYMMDD for list name/description matching. */
 function todayYYYYMMDD(): string {
   const d = new Date();
@@ -141,17 +155,19 @@ export function getDefaultListId(lists: ClickUpListItem[]): string {
   return first ? first.id : CU_DEFAULT_LIST_ID;
 }
 
-/** Fetch folders then all lists from first folder (for dropdown). Returns lists + defaultListId. */
+/** Fetch lists for dropdown: use folderless lists if space has no folders, else first folder's lists. Returns lists + defaultListId. */
 export async function fetchListsWithDefault(spaceId: string = CU_SPACE_ID): Promise<{
   lists: ClickUpListItem[];
   defaultListId: string;
 }> {
   const folders = await fetchFoldersForSpace(spaceId);
   const firstFolder = folders[0];
-  if (!firstFolder) {
-    return { lists: [], defaultListId: CU_DEFAULT_LIST_ID };
+  let lists: ClickUpListItem[];
+  if (firstFolder) {
+    lists = await fetchListsForFolder(firstFolder.id);
+  } else {
+    lists = await fetchFolderlessListsForSpace(spaceId);
   }
-  const lists = await fetchListsForFolder(firstFolder.id);
   const defaultListId = getDefaultListId(lists);
   return { lists, defaultListId };
 }
