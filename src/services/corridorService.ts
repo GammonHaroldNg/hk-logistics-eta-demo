@@ -36,6 +36,11 @@ export async function loadCorridorsFromGeoJSON(): Promise<void> {
     const parser = JSONStream.parse('features.*');
 
     stream.on('error', (err: any) => {
+      if (err?.code === 'ENOENT') {
+        console.warn('GeoJSON file not found at', geoJsonPath, '- serving with empty corridors');
+        resolve();
+        return;
+      }
       reject(new Error(`Failed to read GeoJSON file: ${err.message}`));
     });
 

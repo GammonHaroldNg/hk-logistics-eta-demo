@@ -104,8 +104,10 @@ async function updateTrafficData(): Promise<void> {
 }
 
 // ===== STARTUP =====
+// On Vercel, run init in setImmediate so the module loads quickly and the first request can be served.
+const isVercel = process.env.VERCEL === 'true';
 
-(async () => {
+async function runStartup(): Promise<void> {
   try {
     await loadCorridorsFromGeoJSON();
     console.log('Project corridors loaded:', Object.keys(getAllCorridors()).length);
@@ -205,27 +207,34 @@ async function updateTrafficData(): Promise<void> {
     buildFilteredCorridors(tdasRouteIds);
     console.log('Filtered corridors ready:', Object.keys(getFilteredCorridors()).length);
 
-    setInterval(updateTrafficData, CONFIG.TRAFFIC_UPDATE_INTERVAL_MS);
-    setInterval(() => {
-      if (isDeliveryRunning()) tickDelivery(1);
-    }, CONFIG.DELIVERY_TICK_INTERVAL_MS);
-    setInterval(
-      () => syncTrucksFromDb().catch((err) => console.error('Failed to sync trucks', err)),
-      CONFIG.TRUCK_SYNC_INTERVAL_MS
-    );
+    if (!isVercel) {
+      setInterval(updateTrafficData, CONFIG.TRAFFIC_UPDATE_INTERVAL_MS);
+      setInterval(() => {
+        if (isDeliveryRunning()) tickDelivery(1);
+      }, CONFIG.DELIVERY_TICK_INTERVAL_MS);
+      setInterval(
+        () => syncTrucksFromDb().catch((err) => console.error('Failed to sync trucks', err)),
+        CONFIG.TRUCK_SYNC_INTERVAL_MS
+      );
+    }
 
-    // 2) Initial sync of trucks from DB
     try {
       await syncTrucksFromDb();
     } catch (e) {
       console.error('Failed to sync trucks from trips', e);
     }
 
-    console.log('Server initialized, delivery tick running');
+    console.log('Server initialized', isVercel ? '(Vercel, no intervals)' : ', delivery tick running');
   } catch (err) {
     console.error('Failed to initialize app:', err);
   }
-})();
+}
+
+if (isVercel) {
+  setImmediate(() => { void runStartup(); });
+} else {
+  void runStartup();
+}
 
 // ===== PAGE ROUTES =====
 
