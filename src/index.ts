@@ -59,6 +59,7 @@ import { buildPathGeometries } from './services/pathService';
 import {
   fetchFoldersForSpace,
   fetchListsForFolder,
+  fetchListsWithDefault,
   fetchTripsFromList,
   isClickUpConfigured,
   type ClickUpTrip,
@@ -551,6 +552,19 @@ app.get('/api/clickup/lists', async (req: any, res: any) => {
     res.json({ lists });
   } catch (e: any) {
     console.error('ClickUp lists error', e);
+    res.status(500).json({ error: e.message || 'Failed to fetch lists' });
+  }
+});
+
+/** Lists from first folder in space + defaultListId (by today YYYYMMDD in name/content, or config fallback). */
+app.get('/api/clickup/lists-with-default', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const spaceId = (req.query.spaceId as string) || CU_SPACE_ID;
+    const { lists, defaultListId } = await fetchListsWithDefault(spaceId);
+    res.json({ lists, defaultListId });
+  } catch (e: any) {
+    console.error('ClickUp lists-with-default error', e);
     res.status(500).json({ error: e.message || 'Failed to fetch lists' });
   }
 });

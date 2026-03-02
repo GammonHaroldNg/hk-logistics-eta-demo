@@ -27,3 +27,9 @@ export const CU_FIELD_CONCRETE_GRADE      = 'e797450b-b238-49b7-8ca8-985435ad539
 // Concrete plant options (for mapping to pathId)
 export const CU_OPT_GAMMON_TM             = '08c16118-ef08-44f4-a200-468037cd8b70';
 export const CU_OPT_HKC_TY                = '0f4616b1-81bc-4ec8-addc-d4bedeb239eb';
+
+// Default list when no name/description match (e.g. 20260226_Zone1)
+export const CU_DEFAULT_LIST_ID = '901816296677';
+
+/** List name format for operation day: name must start with YYYYMMDD (e.g. 20260226_Zone1). */
+export const CU_LIST_NAME_DATE_PREFIX = true;

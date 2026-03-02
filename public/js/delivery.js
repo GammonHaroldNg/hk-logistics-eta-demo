@@ -49,12 +49,56 @@ async function startDelivery() {
   }
 }
 
+// ===== CLICKUP LIST DROPDOWN =====
+async function loadClickUpLists() {
+  var sel = document.getElementById('clickupListSelect');
+  var hint = document.getElementById('clickupListHint');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Loading lists…</option>';
+  if (hint) hint.textContent = '';
+  try {
+    var resp = await fetch(DELIVERY_API + 'api/clickup/lists-with-default');
+    if (!resp.ok) {
+      var err = await resp.json().catch(function() { return {}; });
+      if (resp.status === 503) {
+        sel.innerHTML = '<option value="">ClickUp not configured</option>';
+        if (hint) hint.textContent = 'Set CLICKUP_API_TOKEN to use ClickUp lists.';
+      } else {
+        sel.innerHTML = '<option value="">Error loading lists</option>';
+        if (hint) hint.textContent = err.error || 'Failed to load lists';
+      }
+      return;
+    }
+    var data = await resp.json();
+    var lists = data.lists || [];
+    var defaultId = data.defaultListId || '';
+    sel.innerHTML = '';
+    if (lists.length === 0) {
+      sel.innerHTML = '<option value="' + defaultId + '">No lists (use default)</option>';
+      if (hint) hint.textContent = 'Default list ID: ' + defaultId;
+      return;
+    }
+    lists.forEach(function(l) {
+      var opt = document.createElement('option');
+      opt.value = l.id;
+      opt.textContent = l.name || l.id;
+      if (l.id === defaultId) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    if (!defaultId && lists.length > 0) sel.selectedIndex = 0;
+    if (hint) hint.textContent = 'Default: list name starts with today (YYYYMMDD) or description contains date.';
+  } catch (err) {
+    sel.innerHTML = '<option value="">Error</option>';
+    if (hint) hint.textContent = err.message || 'Failed to load lists';
+  }
+}
+
 // ===== START FROM CLICKUP =====
 async function startDeliveryFromClickUp() {
-  var listIdEl = document.getElementById('clickupListId');
-  var listId = listIdEl ? listIdEl.value.trim() : '';
+  var listIdEl = document.getElementById('clickupListSelect');
+  var listId = listIdEl ? listIdEl.value : '';
   if (!listId) {
-    alert('Please enter a ClickUp List ID');
+    alert('Please select a ClickUp list (or ensure lists loaded).');
     return;
   }
   try {
@@ -616,8 +660,9 @@ function makeTruckIcon(bgColor, emoji) {
   });
 }
 
-// Bind ClickUp start button
+// Bind ClickUp start button and expose loadClickUpLists for panel show
 (function() {
   var btn = document.getElementById('btnStartFromClickUp');
   if (btn) btn.addEventListener('click', startDeliveryFromClickUp);
+  if (typeof window !== 'undefined') window.loadClickUpLists = loadClickUpLists;
 })();

@@ -1,5 +1,5 @@
 // src/services/clickupService.ts — Fetch lists/tasks from ClickUp and map to simulation trips
-import fetch from 'node-fetch';
+// Uses global fetch (Node 18+)
 import {
   CU_FIELD_TRUCK_LICENSE,
   CU_FIELD_CONCRETE_PLANT,
@@ -9,6 +9,7 @@ import {
   CU_OPT_GAMMON_TM,
   CU_OPT_HKC_TY,
   CU_SPACE_ID,
+  CU_DEFAULT_LIST_ID,
 } from '../constants/clickupConfig';
 import type { PathId } from '../constants/projectRoutes';
 
@@ -75,16 +76,17 @@ export function clickUpTaskToTrip(task: any): ClickUpTrip {
   if (su === 'complete' || su === 'closed' || actualArrival) status = 'completed';
   else if (su === 'in progress' || actualStart) status = 'in_progress';
 
-  return {
+  const trip: ClickUpTrip = {
     id: String(task.id),
     vehicle_id: String(vehicleId),
     actual_start_at: actualStart,
     actual_arrival_at: actualArrival,
     status,
     pathId,
-    concrete_plant: plantOption ? String(plantOption) : undefined,
-    m3_per_truck: numM3,
   };
+  if (plantOption != null) trip.concrete_plant = String(plantOption);
+  if (numM3 != null && !Number.isNaN(numM3)) trip.m3_per_truck = numM3;
+  return trip;
 }
 
 export async function fetchFoldersForSpace(spaceId: string = CU_SPACE_ID): Promise<Array<{ id: string; name: string }>> {
@@ -96,13 +98,62 @@ export async function fetchFoldersForSpace(spaceId: string = CU_SPACE_ID): Promi
   return (data.folders || []).map((f: any) => ({ id: f.id, name: f.name }));
 }
 
-export async function fetchListsForFolder(folderId: string): Promise<Array<{ id: string; name: string }>> {
+export interface ClickUpListItem {
+  id: string;
+  name: string;
+  content?: string;
+}
+
+export async function fetchListsForFolder(folderId: string): Promise<ClickUpListItem[]> {
   const res = await fetch(`${CLICKUP_API_BASE}/folder/${folderId}/list?archived=false`, {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`ClickUp lists ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return (data.lists || []).map((l: any) => ({ id: l.id, name: l.name }));
+  return (data.lists || []).map((l: any) => ({
+    id: l.id,
+    name: l.name || '',
+    ...(l.content != null ? { content: String(l.content) } : {}),
+  }));
+}
+
+/** Get today in HK as YYYYMMDD for list name/description matching. */
+function todayYYYYMMDD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+/**
+ * Pick default list ID: 1) list name starts with today YYYYMMDD, 2) list content contains today YYYYMMDD, 3) CU_DEFAULT_LIST_ID if in list, 4) first list.
+ */
+export function getDefaultListId(lists: ClickUpListItem[]): string {
+  const today = todayYYYYMMDD();
+  const byName = lists.find((l) => l.name.startsWith(today));
+  if (byName) return byName.id;
+  const byContent = lists.find((l) => l.content && l.content.includes(today));
+  if (byContent) return byContent.id;
+  const fallback = lists.find((l) => l.id === CU_DEFAULT_LIST_ID);
+  if (fallback) return fallback.id;
+  const first = lists[0];
+  return first ? first.id : CU_DEFAULT_LIST_ID;
+}
+
+/** Fetch folders then all lists from first folder (for dropdown). Returns lists + defaultListId. */
+export async function fetchListsWithDefault(spaceId: string = CU_SPACE_ID): Promise<{
+  lists: ClickUpListItem[];
+  defaultListId: string;
+}> {
+  const folders = await fetchFoldersForSpace(spaceId);
+  const firstFolder = folders[0];
+  if (!firstFolder) {
+    return { lists: [], defaultListId: CU_DEFAULT_LIST_ID };
+  }
+  const lists = await fetchListsForFolder(firstFolder.id);
+  const defaultListId = getDefaultListId(lists);
+  return { lists, defaultListId };
 }
 
 export async function fetchTasksForList(listId: string): Promise<any[]> {
