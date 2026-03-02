@@ -10,6 +10,7 @@
     "clean": "rmdir /s /q dist 2>nul || npx rimraf dist"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "JSONStream": "^1.3.5",

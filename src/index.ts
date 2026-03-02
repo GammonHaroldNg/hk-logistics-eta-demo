@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -528,6 +529,16 @@ function requireClickUp(res: any): boolean {
   }
   return true;
 }
+
+// Check if ClickUp env is visible at runtime (for debugging Vercel env vars)
+app.get('/api/clickup/status', (req: any, res: any) => {
+  res.json({
+    configured: isClickUpConfigured(),
+    hint: isClickUpConfigured()
+      ? 'CLICKUP_API_TOKEN is set'
+      : 'Set CLICKUP_API_TOKEN in Vercel → Settings → Environment Variables (Production + Preview), then redeploy.',
+  });
+});
 
 app.get('/api/clickup/folders', async (req: any, res: any) => {
   try {
