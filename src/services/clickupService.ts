@@ -72,7 +72,7 @@ function plannedStartFromTimePeriod(timePeriod: any, today: Date): string | null
   if (timePeriod == null) return null;
   const s = String(timePeriod).trim();
   const match = s.match(/^(\d{1,2}):(\d{2})(?:-(\d{1,2}):(\d{2}))?/);
-  if (!match) return null;
+  if (!match || match[1] === undefined || match[2] === undefined) return null;
   const hour = parseInt(match[1], 10);
   const min = parseInt(match[2], 10);
   const d = new Date(today);
