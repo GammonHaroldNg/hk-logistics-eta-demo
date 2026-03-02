@@ -18,10 +18,10 @@ function renderDeliveryForm() {
 // ===== START =====
 async function startDelivery() {
   var body = {
-    targetVolume: Number(document.getElementById('deliveryTarget').value),
-    volumePerTruck: Number(document.getElementById('deliveryPerTruck').value),
-    trucksPerHour: Number(document.getElementById('deliveryFrequency').value),
-    defaultSpeed: Number(document.getElementById('deliverySpeed').value)
+    targetVolume: Number(document.getElementById('deliveryTarget')?.value || 600),
+    volumePerTruck: Number(document.getElementById('deliveryPerTruck')?.value || 8),
+    trucksPerHour: Number(document.getElementById('deliveryFrequency')?.value || 12),
+    defaultSpeed: Number(document.getElementById('deliverySpeed')?.value || 50)
   };
 
   try {
@@ -34,8 +34,10 @@ async function startDelivery() {
     if (!resp.ok) { alert('Error: ' + (data.error || 'Unknown')); return; }
     console.log('Delivery started:', data);
 
-    document.getElementById('btnStartDelivery').style.display = 'none';
-    document.getElementById('btnStopDelivery').style.display = 'block';
+    if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'none';
+    if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'block';
+    var clickupBlock = document.getElementById('clickupStartBlock');
+    if (clickupBlock) clickupBlock.style.display = 'none';
 
     pollDeliveryStatus();
     deliveryInterval = setInterval(pollDeliveryStatus, 1000);
@@ -47,13 +49,50 @@ async function startDelivery() {
   }
 }
 
+// ===== START FROM CLICKUP =====
+async function startDeliveryFromClickUp() {
+  var listIdEl = document.getElementById('clickupListId');
+  var listId = listIdEl ? listIdEl.value.trim() : '';
+  if (!listId) {
+    alert('Please enter a ClickUp List ID');
+    return;
+  }
+  try {
+    var resp = await fetch(DELIVERY_API + 'api/delivery/start-from-clickup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listId: listId, defaultSpeed: 50 })
+    });
+    var data = await resp.json();
+    if (!resp.ok) {
+      alert('Error: ' + (data.error || resp.status));
+      return;
+    }
+    console.log('Delivery started from ClickUp:', data);
+
+    if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'none';
+    if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'block';
+    var clickupBlock = document.getElementById('clickupStartBlock');
+    if (clickupBlock) clickupBlock.style.display = 'none';
+
+    pollDeliveryStatus();
+    deliveryInterval = setInterval(pollDeliveryStatus, 1000);
+    if (typeof zoomToProjectRoutes === 'function') zoomToProjectRoutes();
+  } catch (err) {
+    console.error('Failed to start from ClickUp:', err);
+    alert('Failed to start from ClickUp: ' + err.message);
+  }
+}
+
 // ===== STOP =====
 async function stopDeliverySession() {
   try {
     await fetch(DELIVERY_API + 'api/delivery/stop', { method: 'POST' });
     if (deliveryInterval) { clearInterval(deliveryInterval); deliveryInterval = null; }
-    document.getElementById('btnStartDelivery').style.display = 'block';
-    document.getElementById('btnStopDelivery').style.display = 'none';
+    if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'block';
+    if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'none';
+    var clickupBlock = document.getElementById('clickupStartBlock');
+    if (clickupBlock) clickupBlock.style.display = '';
   } catch (err) { console.error(err); }
 }
 
@@ -62,10 +101,12 @@ async function resetDeliverySession() {
   try {
     await fetch(DELIVERY_API + 'api/delivery/reset', { method: 'POST' });
     if (deliveryInterval) { clearInterval(deliveryInterval); deliveryInterval = null; }
-    Object.values(truckMarkers).forEach(function(m) { map.removeLayer(m); });
+    if (typeof map !== 'undefined') Object.values(truckMarkers).forEach(function(m) { map.removeLayer(m); });
     truckMarkers = {};
-    document.getElementById('btnStartDelivery').style.display = 'block';
-    document.getElementById('btnStopDelivery').style.display = 'none';
+    if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'block';
+    if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'none';
+    var clickupBlock = document.getElementById('clickupStartBlock');
+    if (clickupBlock) clickupBlock.style.display = '';
     document.getElementById('projectVehicleList').innerHTML = '';
     document.getElementById('projectPerformance').innerHTML = 'No active delivery.';
     renderDeliveryForm();
@@ -574,3 +615,9 @@ function makeTruckIcon(bgColor, emoji) {
     iconAnchor: [13, 13]
   });
 }
+
+// Bind ClickUp start button
+(function() {
+  var btn = document.getElementById('btnStartFromClickUp');
+  if (btn) btn.addEventListener('click', startDeliveryFromClickUp);
+})();

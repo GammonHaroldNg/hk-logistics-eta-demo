@@ -115,6 +115,13 @@
                 <div class="tracking-panel">
                   <div class="eta-info">
                     <h2>Concrete Delivery Overview</h2>
+                    <div id="clickupStartBlock" style="margin-bottom:12px;padding:10px;background:#1f2937;border-radius:8px;border:1px solid #4b5563;">
+                      <div style="font-size:12px;color:#9ca3af;margin-bottom:6px;">Start simulation from ClickUp list</div>
+                      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input type="text" id="clickupListId" placeholder="List ID (e.g. 901816296677)" style="flex:1;min-width:180px;padding:6px 10px;border-radius:6px;border:1px solid #4b5563;background:#111827;color:#e5e7eb;" />
+                        <button type="button" id="btnStartFromClickUp" style="padding:6px 14px;border-radius:6px;border:none;background:#3b82f6;color:white;font-weight:600;cursor:pointer;">Start from ClickUp</button>
+                      </div>
+                    </div>
                     <div class="route-info-content" id="projectRouteInfo">
                       Select a project route to start simulation.
                     </div>

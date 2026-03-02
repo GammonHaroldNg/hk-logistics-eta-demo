@@ -56,6 +56,14 @@ let lastTrafficUpdateTime: Date | null = null;
 
 import { PROJECT_ROUTE_IDS, PROJECT_PATHS, PathId } from './constants/projectRoutes';
 import { buildPathGeometries } from './services/pathService';
+import {
+  fetchFoldersForSpace,
+  fetchListsForFolder,
+  fetchTripsFromList,
+  isClickUpConfigured,
+  type ClickUpTrip,
+} from './services/clickupService';
+import { CU_SPACE_ID } from './constants/clickupConfig';
 
 // ===== HELPERS =====
 
@@ -507,6 +515,102 @@ app.post('/api/delivery/reset', (req: any, res: any) => {
     res.json({ message: 'Delivery session reset' });
   } catch (error) {
     res.status(500).json({ error: String(error) });
+  }
+});
+
+// ===== API: CLICKUP (lists/tasks → simulation) =====
+
+function requireClickUp(res: any): boolean {
+  if (!isClickUpConfigured()) {
+    res.status(503).json({ error: 'ClickUp not configured', hint: 'Set CLICKUP_API_TOKEN' });
+    return false;
+  }
+  return true;
+}
+
+app.get('/api/clickup/folders', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const spaceId = req.query.spaceId || CU_SPACE_ID;
+    const folders = await fetchFoldersForSpace(spaceId);
+    res.json({ folders });
+  } catch (e: any) {
+    console.error('ClickUp folders error', e);
+    res.status(500).json({ error: e.message || 'Failed to fetch folders' });
+  }
+});
+
+app.get('/api/clickup/lists', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const folderId = req.query.folderId;
+    if (!folderId) {
+      return res.status(400).json({ error: 'folderId required' });
+    }
+    const lists = await fetchListsForFolder(folderId);
+    res.json({ lists });
+  } catch (e: any) {
+    console.error('ClickUp lists error', e);
+    res.status(500).json({ error: e.message || 'Failed to fetch lists' });
+  }
+});
+
+app.get('/api/clickup/tasks', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const listId = req.query.listId;
+    if (!listId) {
+      return res.status(400).json({ error: 'listId required' });
+    }
+    const trips = await fetchTripsFromList(listId);
+    res.json({ trips });
+  } catch (e: any) {
+    console.error('ClickUp tasks error', e);
+    res.status(500).json({ error: e.message || 'Failed to fetch tasks' });
+  }
+});
+
+/** Start delivery session and hydrate trucks from a ClickUp list. Only tasks with Actual Departure set and status in_progress are shown on the map. */
+app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const listId = req.body.listId;
+    if (!listId) {
+      return res.status(400).json({ error: 'listId required' });
+    }
+    const defaultSpeed = req.body.defaultSpeed ?? CONFIG.DEFAULT_SPEED_NO_DATA_KMH;
+
+    const pathGeometries = buildPathGeometries();
+    const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+    if (!base || base.coordinates.length === 0) {
+      return res.status(400).json({ error: 'No path geometry found' });
+    }
+
+    const result = startDeliverySession(
+      {
+        routeId: 0,
+        targetVolume: req.body.targetVolume ?? 600,
+        volumePerTruck: req.body.volumePerTruck ?? 8,
+        trucksPerHour: req.body.trucksPerHour ?? 12,
+        startTime: new Date(),
+        defaultSpeed,
+      },
+      pathGeometries,
+    );
+
+    const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
+    const inProgress = trips.filter((t) => t.status === 'in_progress' && t.actual_start_at);
+    await hydrateFromTrips(inProgress as import('./services/truckService').DbTrip[], defaultSpeed);
+
+    res.json({
+      ...result,
+      message: 'Delivery started from ClickUp list',
+      tripCount: trips.length,
+      inProgressCount: inProgress.length,
+    });
+  } catch (e: any) {
+    console.error('Start from ClickUp error', e);
+    res.status(500).json({ error: e.message || 'Failed to start from ClickUp' });
   }
 });
 

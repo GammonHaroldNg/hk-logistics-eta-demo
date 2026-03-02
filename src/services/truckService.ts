@@ -477,7 +477,10 @@ export interface DbTrip {
   actual_start_at: string | null;
   actual_arrival_at: string | null;
   status: 'planned' | 'in_progress' | 'completed';
-  corrected: boolean | null;
+  corrected?: boolean | null;
+  /** When present (e.g. from ClickUp), use this path for geometry and distance. */
+  pathId?: PathId;
+  concrete_plant?: string;
 }
 
 function ensureConfigForDb(): void {
@@ -502,21 +505,29 @@ function ensureConfigForDb(): void {
 
 
 
+/** Resolve pathId from trip (ClickUp pathId or DB concrete_plant). */
+function tripPathId(trip: DbTrip): PathId {
+  if (trip.pathId) return trip.pathId;
+  const plant = (trip.concrete_plant || '').toLowerCase();
+  if (plant.includes('hkc') || plant.includes('tsing yi')) return 'HKC_TY';
+  return 'GAMMON_TM';
+}
+
 export function addTruckFromTrip(
   trip: DbTrip,
-  totalDist: number,
   speedKmh: number,
 ): ConcreteTruck | null {
   if (!config) return null;
-  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
-  if (!base || !base.coordinates) return null;
-
   ensureConfigForDb();
   if (!trip.actual_start_at) return null;
 
+  const pathId = tripPathId(trip);
+  const base = config.pathGeometries[pathId] || config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  if (!base || !base.coordinates) return null;
+
+  const totalDist = calculateRouteDistance(base.coordinates);
   const startTime = new Date(trip.actual_start_at);
   const now = new Date();
-
 
   const speed = Math.min(speedKmh, MIXER_MAX_SPEED);
   const travelTimeSeconds = (totalDist / speed) * 3600;
@@ -548,12 +559,13 @@ export function addTruckFromTrip(
     : [0, 0];
 
   const truckId = `TRIP-${trip.id}`;
+  const volumePerTruck = (trip as { m3_per_truck?: number }).m3_per_truck ?? config!.volumePerTruck;
 
   const truck: ConcreteTruck = {
     truckId,
     truckNumber: ++nextTruckNumber,
     routeId: config!.routeId,
-    pathId: 'GAMMON_TM', // DB trips assumed on Gammon path for now
+    pathId,
     status: progressRatio >= 1 ? 'arrived' : 'en-route',
     currentPosition:
       interpolatePosition({ type: 'LineString', coordinates: base.coordinates }, progressRatio) ?? startPos,
@@ -564,9 +576,8 @@ export function addTruckFromTrip(
     elapsedSeconds,
     totalDistance: totalDist,
     currentSpeed: speed,
-    concreteVolume: config!.volumePerTruck,
+    concreteVolume: volumePerTruck,
   };
-
 
   activeTrucks.set(truckId, truck);
   tripToTruckId.set(trip.id, truckId);
@@ -614,15 +625,9 @@ export async function hydrateFromTrips(trips: DbTrip[], defaultSpeedKmh: number)
   ensureConfigForDb();
   if (!config) return;
 
-  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
-  if (!base) return;
-
-  const totalDist = calculateRouteDistance(base.coordinates);
-  if (totalDist <= 0) return;
-
   for (const trip of trips) {
     if (trip.status !== 'in_progress') continue;
-    addTruckFromTrip(trip, totalDist, defaultSpeedKmh);
+    addTruckFromTrip(trip, defaultSpeedKmh);
   }
 }
 
