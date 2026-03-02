@@ -37,7 +37,14 @@ function getCustomField(task: any, fieldId: string): any {
   return f?.value;
 }
 
-/** Parse ClickUp date (ms or ISO string) to ISO string. Returns null for invalid or unparseable values. */
+/**
+ * Parse ClickUp date value to ISO string. Handles:
+ * - number (ms timestamp)
+ * - ISO string
+ * - US display: "3/2/26, 6:52am" / "2/3/26, 6:30am"
+ * - "M/D/YY HH:MM" (24h)
+ * - Time only "06:00:00" (use today's date)
+ */
 function parseDateValue(v: any): string | null {
   if (v == null) return null;
   try {
@@ -46,9 +53,11 @@ function parseDateValue(v: any): string | null {
       if (!Number.isFinite(v) || v <= 0) return null;
       d = new Date(v);
     } else if (typeof v === 'string') {
-      const trimmed = String(v).trim();
-      if (!trimmed) return null;
-      d = new Date(trimmed);
+      const s = String(v).trim();
+      if (!s) return null;
+      const parsed = parseDateString(s);
+      if (!parsed) return null;
+      d = parsed;
     } else {
       return null;
     }
@@ -57,6 +66,51 @@ function parseDateValue(v: any): string | null {
   } catch {
     return null;
   }
+}
+
+function parseDateString(s: string): Date | null {
+  const trimmed = s.trim();
+  if (!trimmed) return null;
+  const d = new Date(trimmed);
+  if (Number.isFinite(d.getTime())) return d;
+  const today = new Date();
+  const tzYear = today.getFullYear();
+  const tzMonth = today.getMonth();
+  const tzDate = today.getDate();
+  const patterns: Array<{ regex: RegExp; build: (m: string[]) => Date }> = [
+    { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s*(\d{1,2}):(\d{2})\s*(am|pm)$/i, build: (p) => {
+      const y = (p[2]!.length === 2) ? 2000 + parseInt(p[2]!, 10) : parseInt(p[2]!, 10);
+      let h = parseInt(p[3]!, 10);
+      if ((p[5] ?? '').toLowerCase() === 'pm' && h < 12) h += 12;
+      if ((p[5] ?? '').toLowerCase() === 'am' && h === 12) h = 0;
+      return new Date(y, parseInt(p[0]!, 10) - 1, parseInt(p[1]!, 10), h, parseInt(p[4]!, 10), 0, 0);
+    }},
+    { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})/, build: (p) => {
+      const y = (p[2]!.length === 2) ? 2000 + parseInt(p[2]!, 10) : parseInt(p[2]!, 10);
+      return new Date(y, parseInt(p[0]!, 10) - 1, parseInt(p[1]!, 10), parseInt(p[3]!, 10), parseInt(p[4]!, 10), 0, 0);
+    }},
+    { regex: /^(\d{1,2}):(\d{2}):(\d{2})$/, build: (p) =>
+      new Date(tzYear, tzMonth, tzDate, parseInt(p[0]!, 10), parseInt(p[1]!, 10), parseInt(p[2]!, 10), 0)
+    },
+    { regex: /^(\d{1,2}):(\d{2})\s*(am|pm)$/i, build: (p) => {
+      let h = parseInt(p[0]!, 10);
+      if ((p[2] ?? '').toLowerCase() === 'pm' && h < 12) h += 12;
+      if ((p[2] ?? '').toLowerCase() === 'am' && h === 12) h = 0;
+      return new Date(tzYear, tzMonth, tzDate, h, parseInt(p[1]!, 10), 0, 0);
+    }},
+  ];
+  for (const { regex, build } of patterns) {
+    const m = trimmed.match(regex);
+    if (m) {
+      const parts: string[] = m.slice(1).map((x) => x ?? '');
+      if (parts.some((p) => p === '')) continue;
+      try {
+        const out = build(parts);
+        if (Number.isFinite(out.getTime())) return out;
+      } catch { /* skip */ }
+    }
+  }
+  return null;
 }
 
 /** Map Concrete Plant option ID to pathId */

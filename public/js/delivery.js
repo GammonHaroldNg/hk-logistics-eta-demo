@@ -124,9 +124,7 @@ async function startDeliveryFromClickUp() {
 
     if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'none';
     if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'block';
-    var clickupBlock = document.getElementById('clickupStartBlock');
-    if (clickupBlock) clickupBlock.style.display = 'none';
-
+    // Keep ClickUp block (and list selection) visible so user can see which list is running or start from another list
     pollDeliveryStatus();
     deliveryInterval = setInterval(pollDeliveryStatus, 1000);
     if (typeof zoomToProjectRoutes === 'function') zoomToProjectRoutes();
