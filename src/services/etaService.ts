@@ -1,19 +1,39 @@
 /**
- * Calculate total route distance using Haversine formula
+ * Flatten geometry to a single array of [lng, lat] for LineString or MultiLineString.
+ */
+function flattenCoordinates(geometry: any): [number, number][] {
+  if (!geometry?.coordinates) return [];
+  const c = geometry.coordinates;
+  if (geometry.type === 'MultiLineString' && Array.isArray(c)) {
+    const out: [number, number][] = [];
+    for (const line of c as number[][][]) {
+      if (Array.isArray(line)) {
+        for (const pt of line) {
+          if (Array.isArray(pt) && pt.length >= 2) out.push([Number(pt[0]), Number(pt[1])]);
+        }
+      }
+    }
+    return out;
+  }
+  if (geometry.type === 'LineString' && Array.isArray(c)) {
+    return (c as [number, number][]).map((pt) => [Number(pt[0]), Number(pt[1])]);
+  }
+  return [];
+}
+
+/**
+ * Calculate total route distance using Haversine formula.
+ * Supports LineString and MultiLineString geometry.
  */
 export function calculateRouteDistance(lineString: any): number {
-  const coords = (lineString.coordinates || []) as [number, number][];
+  const coords = flattenCoordinates(lineString);
   let distance = 0;
-  
   for (let i = 0; i < coords.length - 1; i++) {
     const coord1 = coords[i];
     const coord2 = coords[i + 1];
-    
     if (!coord1 || !coord2) continue;
-    
     distance += haversineDistance(coord1[1], coord1[0], coord2[1], coord2[0]);
   }
-  
   return distance; // km
 }
 
