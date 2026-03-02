@@ -37,12 +37,26 @@ function getCustomField(task: any, fieldId: string): any {
   return f?.value;
 }
 
-/** Parse ClickUp date (ms or ISO string) to ISO string for actual_start_at/actual_arrival_at */
+/** Parse ClickUp date (ms or ISO string) to ISO string. Returns null for invalid or unparseable values. */
 function parseDateValue(v: any): string | null {
   if (v == null) return null;
-  if (typeof v === 'number' && v > 0) return new Date(v).toISOString();
-  if (typeof v === 'string') return new Date(v).toISOString();
-  return null;
+  try {
+    let d: Date;
+    if (typeof v === 'number') {
+      if (!Number.isFinite(v) || v <= 0) return null;
+      d = new Date(v);
+    } else if (typeof v === 'string') {
+      const trimmed = String(v).trim();
+      if (!trimmed) return null;
+      d = new Date(trimmed);
+    } else {
+      return null;
+    }
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toISOString();
+  } catch {
+    return null;
+  }
 }
 
 /** Map Concrete Plant option ID to pathId */

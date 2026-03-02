@@ -428,19 +428,22 @@ export function getDeliveryStatus() {
       delayMinutes: throughput.delayMinutes,
       hourlyBreakdown: throughput.hourlyBreakdown
     },
-    trucks: Array.from(activeTrucks.values()).map(t => ({
-      truckId: t.truckId,
-      truckNumber: t.truckNumber,
-      status: t.status,
-      position: t.currentPosition,
-      progress: Math.round(t.progressRatio * 100),
-      currentSpeed: Math.round(t.currentSpeed),
-      departureTime: t.departureTime.toISOString(),
-      estimatedArrival: t.estimatedArrival.toISOString(),
-      arrivalTime: t.arrivalTime ? t.arrivalTime.toISOString() : null,
-      concreteVolume: t.concreteVolume,
-      elapsedSeconds: Math.round(t.elapsedSeconds)
-    })),
+    trucks: Array.from(activeTrucks.values()).map(t => {
+      const safeIso = (d: Date) => (d && Number.isFinite(d.getTime()) ? d.toISOString() : null);
+      return {
+        truckId: t.truckId,
+        truckNumber: t.truckNumber,
+        status: t.status,
+        position: t.currentPosition,
+        progress: Math.round(t.progressRatio * 100),
+        currentSpeed: Math.round(t.currentSpeed),
+        departureTime: safeIso(t.departureTime) ?? new Date().toISOString(),
+        estimatedArrival: safeIso(t.estimatedArrival) ?? new Date().toISOString(),
+        arrivalTime: t.arrivalTime ? safeIso(t.arrivalTime) : null,
+        concreteVolume: t.concreteVolume,
+        elapsedSeconds: Math.round(t.elapsedSeconds)
+      };
+    }),
     deliveryLog: deliveryLog.map(r => ({
       truckId: r.truckId,
       truckNumber: r.truckNumber,
@@ -524,12 +527,14 @@ export function addTruckFromTrip(
   const startAt = trip.actual_start_at ?? trip.planned_start_at ?? null;
   if (!startAt) return null;
 
+  const startTime = new Date(startAt);
+  if (Number.isNaN(startTime.getTime())) return null;
+
   const pathId = tripPathId(trip);
   const base = config.pathGeometries[pathId] || config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
   if (!base || !base.coordinates) return null;
 
   const totalDist = calculateRouteDistance(base.coordinates);
-  const startTime = new Date(startAt);
   const now = new Date();
 
   const speed = Math.min(speedKmh, MIXER_MAX_SPEED);

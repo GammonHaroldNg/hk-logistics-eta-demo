@@ -3,6 +3,14 @@
 // ========================================
 var DELIVERY_API = (typeof APIBASE !== 'undefined' && APIBASE) ? APIBASE : '';
 
+/** Safe format for API date strings; avoids "Invalid time value" when date is missing or invalid. */
+function safeTimeStr(isoOrNull) {
+  if (isoOrNull == null) return '—';
+  var d = new Date(isoOrNull);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
+}
+
 let deliveryInterval = null;
 let truckMarkers = {};
 let lastNonEmptyTrucks = [];
@@ -380,11 +388,12 @@ function updateTruckListFromSim(data) {
       var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
       var statusIcon = t.status === 'en-route' ? '🚛' : '✅';
       var etaStr = t.status === 'en-route'
-        ? new Date(t.estimatedArrival).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' })
-        : new Date(t.arrivalTime).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
+        ? safeTimeStr(t.estimatedArrival)
+        : safeTimeStr(t.arrivalTime);
       var remainSec = 0;
-      if (t.status === 'en-route') {
-        remainSec = Math.max(0, Math.round((new Date(t.estimatedArrival).getTime() - Date.now()) / 1000));
+      if (t.status === 'en-route' && t.estimatedArrival) {
+        var etaMs = new Date(t.estimatedArrival).getTime();
+        if (Number.isFinite(etaMs)) remainSec = Math.max(0, Math.round((etaMs - Date.now()) / 1000));
       }
       var remainMin = Math.round(remainSec / 60);
       var travelMin = Math.round(t.elapsedSeconds / 60);
@@ -622,14 +631,13 @@ function updateTruckMarkers(trucks) {
 
 function buildTruckPopup(t) {
   var remainSec = 0;
-  if (t.status === 'en-route') {
-    remainSec = Math.max(0, Math.round((new Date(t.estimatedArrival).getTime() - Date.now()) / 1000));
+  if (t.status === 'en-route' && t.estimatedArrival) {
+    var etaMs = new Date(t.estimatedArrival).getTime();
+    if (Number.isFinite(etaMs)) remainSec = Math.max(0, Math.round((etaMs - Date.now()) / 1000));
   }
   var remainMin = Math.round(remainSec / 60);
   var travelMin = Math.round(t.elapsedSeconds / 60);
-  var etaStr = t.status === 'en-route'
-    ? new Date(t.estimatedArrival).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' })
-    : new Date(t.arrivalTime).toLocaleTimeString('en-HK', { hour: '2-digit', minute: '2-digit' });
+  var etaStr = t.status === 'en-route' ? safeTimeStr(t.estimatedArrival) : safeTimeStr(t.arrivalTime);
 
   if (t.status === 'en-route') {
     return '<b>' + t.truckId + '</b><br>' +
