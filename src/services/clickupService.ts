@@ -6,10 +6,12 @@ import {
   CU_FIELD_ACTUAL_DEPARTURE,
   CU_FIELD_ACTUAL_ARRIVAL,
   CU_FIELD_M3_PER_TRUCK,
+  CU_FIELD_TIME_PERIOD,
   CU_OPT_GAMMON_TM,
   CU_OPT_HKC_TY,
   CU_SPACE_ID,
   CU_DEFAULT_LIST_ID,
+  CU_STATUS_ENDED,
 } from '../constants/clickupConfig';
 import type { PathId } from '../constants/projectRoutes';
 
@@ -55,13 +57,40 @@ export interface ClickUpTrip {
   vehicle_id: string;
   actual_start_at: string | null;
   actual_arrival_at: string | null;
+  /** When actual_start_at is missing, use this for simulation start (e.g. from Time Period 06:00-07:00 → 06:00). */
+  planned_start_at: string | null;
+  /** Time period label for planned count (e.g. "06:00-07:00"). */
+  time_period: string | null;
   status: 'planned' | 'in_progress' | 'completed';
   pathId: PathId;
   concrete_plant?: string;
   m3_per_truck?: number;
 }
 
-/** Map ClickUp task to trip for simulation. Only in_progress trips with actual_start_at are used for trucks. */
+/** Parse "06:00-07:00" or "06:00" to today's date + start time as ISO string. Returns null if not parseable. */
+function plannedStartFromTimePeriod(timePeriod: any, today: Date): string | null {
+  if (timePeriod == null) return null;
+  const s = String(timePeriod).trim();
+  const match = s.match(/^(\d{1,2}):(\d{2})(?:-(\d{1,2}):(\d{2}))?/);
+  if (!match) return null;
+  const hour = parseInt(match[1], 10);
+  const min = parseInt(match[2], 10);
+  const d = new Date(today);
+  d.setHours(hour, min, 0, 0);
+  return d.toISOString();
+}
+
+/** Map ClickUp status to planned | in_progress | completed. On the way = animate; Not started = no marker; Rejected/Not Used/Arrived = ended. */
+function mapClickUpStatus(task: any, actualArrival: string | null): 'planned' | 'in_progress' | 'completed' {
+  const su = (task.status?.status || '').toLowerCase().replace(/\s+/g, ' ');
+  if (actualArrival) return 'completed';
+  if (CU_STATUS_ENDED.some((end) => su === end || su.includes(end))) return 'completed';
+  if (su === 'on the way' || su === 'in progress' || su.includes('in progress')) return 'in_progress';
+  if (su === 'not started' || su === 'to do' || su === 'open' || su === '') return 'planned';
+  return 'planned';
+}
+
+/** Map ClickUp task to trip for simulation. in_progress trips with actual_start_at or planned_start_at get a truck on the map. */
 export function clickUpTaskToTrip(task: any): ClickUpTrip {
   const actualStart = parseDateValue(getCustomField(task, CU_FIELD_ACTUAL_DEPARTURE));
   const actualArrival = parseDateValue(getCustomField(task, CU_FIELD_ACTUAL_ARRIVAL));
@@ -71,16 +100,20 @@ export function clickUpTaskToTrip(task: any): ClickUpTrip {
   const m3 = getCustomField(task, CU_FIELD_M3_PER_TRUCK);
   const numM3 = typeof m3 === 'number' ? m3 : typeof m3 === 'string' ? parseFloat(m3) : undefined;
 
-  let status: 'planned' | 'in_progress' | 'completed' = 'planned';
-  const su = (task.status?.status || '').toLowerCase();
-  if (su === 'complete' || su === 'closed' || actualArrival) status = 'completed';
-  else if (su === 'in progress' || actualStart) status = 'in_progress';
+  const timePeriodRaw = getCustomField(task, CU_FIELD_TIME_PERIOD);
+  const timePeriod = timePeriodRaw != null ? String(timePeriodRaw).trim() : null;
+  const today = new Date();
+  const plannedStart = plannedStartFromTimePeriod(timePeriodRaw ?? timePeriod, today);
+
+  const status = mapClickUpStatus(task, actualArrival);
 
   const trip: ClickUpTrip = {
     id: String(task.id),
     vehicle_id: String(vehicleId),
     actual_start_at: actualStart,
     actual_arrival_at: actualArrival,
+    planned_start_at: plannedStart,
+    time_period: timePeriod,
     status,
     pathId,
   };

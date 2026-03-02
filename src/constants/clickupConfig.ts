@@ -18,6 +18,9 @@ export const CU_FIELD_ESTIMATED_ARRIVAL   = 'e8859982-29d6-46ed-bde0-6e4de94cd62
 export const CU_FIELD_ACTUAL_DEPARTURE    = '1d3dd57d-1ac9-4cc7-ad15-dcd0f31ff1d7';
 export const CU_FIELD_ACTUAL_ARRIVAL      = '40b45d8d-0251-4bc2-84fd-507ff157ce1f';
 
+/** ClickUp status values that mean "trip ended" (only Arrived counts for actual progress). */
+export const CU_STATUS_ENDED = ['rejected', 'not used', 'arrived', 'complete', 'closed'] as const;
+
 export const CU_FIELD_TRUCK_DEPART_FLAG   = 'a131e508-c9e4-47a0-bc8f-3bca4bfbea51';
 export const CU_FIELD_TRUCK_ARRIVE_FLAG   = '03e2f16f-6eec-44c8-a213-00cf17b34f12';
 

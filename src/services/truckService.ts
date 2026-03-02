@@ -476,6 +476,8 @@ export interface DbTrip {
   vehicle_id: string;
   actual_start_at: string | null;
   actual_arrival_at: string | null;
+  /** When actual_start_at is missing (e.g. ClickUp), use this for simulation start (e.g. from Time Period). */
+  planned_start_at?: string | null;
   status: 'planned' | 'in_progress' | 'completed';
   corrected?: boolean | null;
   /** When present (e.g. from ClickUp), use this path for geometry and distance. */
@@ -519,14 +521,15 @@ export function addTruckFromTrip(
 ): ConcreteTruck | null {
   if (!config) return null;
   ensureConfigForDb();
-  if (!trip.actual_start_at) return null;
+  const startAt = trip.actual_start_at ?? trip.planned_start_at ?? null;
+  if (!startAt) return null;
 
   const pathId = tripPathId(trip);
   const base = config.pathGeometries[pathId] || config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
   if (!base || !base.coordinates) return null;
 
   const totalDist = calculateRouteDistance(base.coordinates);
-  const startTime = new Date(trip.actual_start_at);
+  const startTime = new Date(startAt);
   const now = new Date();
 
   const speed = Math.min(speedKmh, MIXER_MAX_SPEED);

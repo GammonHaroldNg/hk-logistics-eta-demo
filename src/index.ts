@@ -335,7 +335,7 @@ app.get('/api/traffic', (req: any, res: any) => {
 });
 
 // ===== API: ROUTE ETA (estimated travel time per path to site) =====
-// Speed is capped at CONFIG.SPEED_CAP_KMH (70 km/h). No-data segments use CONFIG.DEFAULT_SPEED_NO_DATA_KMH (50 km/h). Length-weighted average.
+// Per-segment time sum: travelTime = sum(segDist_km / speed_kmh) so each segment's TDAS speed affects ETA.
 
 app.get('/api/route-eta', (req: any, res: any) => {
   try {
@@ -368,8 +368,8 @@ app.get('/api/route-eta', (req: any, res: any) => {
       const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
       const routeIds = PROJECT_PATHS[pathId] || [];
 
-      // Length-weighted average speed, capped at SPEED_CAP_KMH; no-data segments use DEFAULT_SPEED_NO_DATA_KMH
-      let totalWeightedSpeed = 0;
+      // Sum segment travel times: time_h = segDist_km / speed_kmh per segment (TDAS changes per segment affect ETA)
+      let totalTimeHours = 0;
       let totalDistance = 0;
       for (const routeId of routeIds) {
         const corridor = allCorridors[routeId] as { geometry?: { type: string; coordinates: number[][] } } | undefined;
@@ -378,16 +378,15 @@ app.get('/api/route-eta', (req: any, res: any) => {
         if (segDist <= 0) continue;
         const tdas = corridors[routeId];
         const rawSpeed = tdas?.speed;
-        const speed =
+        const speedKmh =
           typeof rawSpeed === 'number' && rawSpeed > 0
             ? Math.min(rawSpeed, speedCapKmh)
             : Math.min(noDataSpeedKmh, speedCapKmh);
-        totalWeightedSpeed += speed * segDist;
+        totalTimeHours += segDist / speedKmh;
         totalDistance += segDist;
       }
-      const speedKmh = totalDistance > 0 ? totalWeightedSpeed / totalDistance : Math.min(noDataSpeedKmh, speedCapKmh);
-      const travelTimeHours = distanceKm / speedKmh;
-      const travelTimeMinutes = Math.round(travelTimeHours * 60);
+      const travelTimeMinutes = Math.round(totalTimeHours * 60);
+      const speedKmh = totalTimeHours > 0 ? totalDistance / totalTimeHours : Math.min(noDataSpeedKmh, speedCapKmh);
       result[pathId] = {
         distanceKm,
         travelTimeMinutes,
@@ -664,7 +663,9 @@ app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
     );
 
     const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-    const inProgress = trips.filter((t) => t.status === 'in_progress' && t.actual_start_at);
+    const inProgress = trips.filter(
+      (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
+    );
     await hydrateFromTrips(inProgress as import('./services/truckService').DbTrip[], defaultSpeed);
 
     res.json({
