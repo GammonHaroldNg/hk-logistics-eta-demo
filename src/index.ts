@@ -63,6 +63,7 @@ import {
   fetchFolderlessListsForSpace,
   fetchListsWithDefault,
   fetchTripsFromList,
+  getListSummary,
   isClickUpConfigured,
   type ClickUpTrip,
 } from './services/clickupService';
@@ -643,6 +644,22 @@ app.get('/api/clickup/tasks', async (req: any, res: any) => {
   }
 });
 
+/** List summary for Concrete Delivery Overview: planned/actual by period, progress %, shortfall. Call to verify we can get list data before Start from ClickUp. */
+app.get('/api/clickup/list-summary', async (req: any, res: any) => {
+  try {
+    if (!requireClickUp(res)) return;
+    const listId = req.query.listId as string;
+    if (!listId) {
+      return res.status(400).json({ ok: false, error: 'listId required' });
+    }
+    const summary = await getListSummary(listId);
+    res.json(summary);
+  } catch (e: any) {
+    console.error('ClickUp list-summary error', e);
+    res.status(500).json({ ok: false, error: e.message || 'Failed to fetch list summary' });
+  }
+});
+
 /** Start delivery session and hydrate trucks from a ClickUp list. Only tasks with Actual Departure set and status in_progress are shown on the map. */
 app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
   try {
@@ -672,16 +689,20 @@ app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
     );
 
     const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-    const inProgress = trips.filter(
-      (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
+    // Simulation on map: only trips with status "ON THE WAY" and Actual Departure Time set get a truck
+    const inProgressWithDeparture = trips.filter(
+      (t) => t.status === 'in_progress' && t.actual_start_at
     );
-    await hydrateFromTrips(inProgress as import('./services/truckService').DbTrip[], defaultSpeed);
+    await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
 
     res.json({
       ...result,
       message: 'Delivery started from ClickUp list',
       tripCount: trips.length,
-      inProgressCount: inProgress.length,
+      inProgressCount: inProgressWithDeparture.length,
+      hint: inProgressWithDeparture.length === 0 && trips.some((t) => t.status === 'in_progress')
+        ? 'No trucks on map: set Actual Departure Time for "ON THE WAY" tasks to see simulation.'
+        : undefined,
     });
   } catch (e: any) {
     console.error('Start from ClickUp error', e);

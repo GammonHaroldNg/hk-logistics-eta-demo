@@ -12,6 +12,7 @@ import {
   CU_SPACE_ID,
   CU_DEFAULT_LIST_ID,
   CU_STATUS_ENDED,
+  CU_TIME_PERIOD_OPTIONS,
 } from '../constants/clickupConfig';
 import type { PathId } from '../constants/projectRoutes';
 
@@ -148,14 +149,27 @@ function plannedStartFromTimePeriod(timePeriod: any, today: Date): string | null
   return d.toISOString();
 }
 
-/** Map ClickUp status to planned | in_progress | completed. On the way = animate; Not started = no marker; Rejected/Not Used/Arrived = ended. */
+/** Map ClickUp status to planned | in_progress | completed. "ON THE WAY" = animate; Not started = no marker; ARRIVED/REJECTED/COMPLETE = ended. */
 function mapClickUpStatus(task: any, actualArrival: string | null): 'planned' | 'in_progress' | 'completed' {
-  const su = (task.status?.status || '').toLowerCase().replace(/\s+/g, ' ');
+  const raw = (task.status?.status || '').trim();
+  const su = raw.toLowerCase().replace(/\s+/g, ' ');
   if (actualArrival) return 'completed';
   if (CU_STATUS_ENDED.some((end) => su === end || su.includes(end))) return 'completed';
-  if (su === 'on the way' || su === 'in progress' || su.includes('in progress')) return 'in_progress';
+  if (su === 'on the way' || raw.toUpperCase() === 'ON THE WAY' || su === 'in progress' || su.includes('in progress')) return 'in_progress';
   if (su === 'not started' || su === 'to do' || su === 'open' || su === '') return 'planned';
   return 'planned';
+}
+
+/** Resolve Time Period value (dropdown option id, or object with name, or "HH:MM-HH:MM" string) to label. */
+function resolveTimePeriodLabel(value: any): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(s)) return s;
+    return CU_TIME_PERIOD_OPTIONS[s] ?? null;
+  }
+  if (typeof value === 'object' && value !== null && typeof (value as any).name === 'string') return (value as any).name.trim() || null;
+  return null;
 }
 
 /** Map ClickUp task to trip for simulation. in_progress trips with actual_start_at or planned_start_at get a truck on the map. */
@@ -169,9 +183,9 @@ export function clickUpTaskToTrip(task: any): ClickUpTrip {
   const numM3 = typeof m3 === 'number' ? m3 : typeof m3 === 'string' ? parseFloat(m3) : undefined;
 
   const timePeriodRaw = getCustomField(task, CU_FIELD_TIME_PERIOD);
-  const timePeriod = timePeriodRaw != null ? String(timePeriodRaw).trim() : null;
+  const timePeriod = resolveTimePeriodLabel(timePeriodRaw) ?? (timePeriodRaw != null ? String(timePeriodRaw).trim() : null);
   const today = new Date();
-  const plannedStart = plannedStartFromTimePeriod(timePeriodRaw ?? timePeriod, today);
+  const plannedStart = plannedStartFromTimePeriod(timePeriod ?? timePeriodRaw, today);
 
   const status = mapClickUpStatus(task, actualArrival);
 
@@ -283,10 +297,101 @@ export async function fetchTasksForList(listId: string): Promise<any[]> {
   return data.tasks || [];
 }
 
-/** Fetch tasks for a list and return as trips (with pathId). Only trips with actual_start_at are suitable for in_progress simulation. */
+/** Fetch tasks for a list and return as trips (with pathId). */
 export async function fetchTripsFromList(listId: string): Promise<ClickUpTrip[]> {
   const tasks = await fetchTasksForList(listId);
   return tasks.map((t: any) => clickUpTaskToTrip(t));
+}
+
+/** Hour (0-23) in Hong Kong for an ISO date string. */
+function getHourHK(isoDate: string | null): number | null {
+  if (!isoDate) return null;
+  try {
+    const d = new Date(isoDate);
+    const hk = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' }));
+    return hk.getHours();
+  } catch {
+    return null;
+  }
+}
+
+/** Format hour as period label "HH:00-(HH+1):00". */
+function hourToPeriodLabel(hour: number): string {
+  const h = hour % 24;
+  const next = (h + 1) % 24;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(h)}:00-${pad(next)}:00`;
+}
+
+/** Ordered period labels (06:00-07:00 through 21:00-22:00) for consistent shortfall. */
+const PERIOD_ORDER = [
+  '06:00-07:00', '07:00-08:00', '08:00-09:00', '09:00-10:00', '10:00-11:00', '11:00-12:00',
+  '12:00-13:00', '13:00-14:00', '14:00-15:00', '15:00-16:00', '16:00-17:00', '17:00-18:00',
+  '18:00-19:00', '19:00-20:00', '20:00-21:00', '21:00-22:00',
+];
+
+export interface ListSummary {
+  ok: boolean;
+  totalTasks: number;
+  onTheWayCount: number;
+  arrivedCount: number;
+  plannedByPeriod: Record<string, number>;
+  actualByPeriod: Record<string, number>;
+  progressPercent: number;
+  shortfall: number;
+  message: string;
+  trips: ClickUpTrip[];
+}
+
+/** Get list summary for Concrete Delivery Overview: planned by Time Period, actual by Actual Arrival Time, progress %, shortfall. */
+export async function getListSummary(listId: string): Promise<ListSummary> {
+  const trips = await fetchTripsFromList(listId);
+  const totalTasks = trips.length;
+  const arrived = trips.filter((t) => t.status === 'completed');
+  const onTheWay = trips.filter((t) => t.status === 'in_progress');
+  const arrivedCount = arrived.length;
+  const onTheWayCount = onTheWay.length;
+
+  const plannedByPeriod: Record<string, number> = {};
+  for (const t of trips) {
+    const label = t.time_period ?? '';
+    if (label) plannedByPeriod[label] = (plannedByPeriod[label] ?? 0) + 1;
+  }
+
+  const actualByPeriod: Record<string, number> = {};
+  for (const t of arrived) {
+    const hour = getHourHK(t.actual_arrival_at ?? null);
+    if (hour !== null) {
+      const label = hourToPeriodLabel(hour);
+      actualByPeriod[label] = (actualByPeriod[label] ?? 0) + 1;
+    }
+  }
+
+  const progressPercent = totalTasks > 0 ? Math.round((arrivedCount / totalTasks) * 100) : 0;
+
+  let shortfall = 0;
+  for (const period of PERIOD_ORDER) {
+    const planned = plannedByPeriod[period] ?? 0;
+    const actual = actualByPeriod[period] ?? 0;
+    shortfall += planned - actual;
+  }
+
+  const message = totalTasks === 0
+    ? 'No tasks in this list. Add tasks or select another list.'
+    : `Total: ${totalTasks} trips · On the way: ${onTheWayCount} · Arrived: ${arrivedCount} (${progressPercent}%)`;
+
+  return {
+    ok: true,
+    totalTasks,
+    onTheWayCount,
+    arrivedCount,
+    plannedByPeriod,
+    actualByPeriod,
+    progressPercent,
+    shortfall,
+    message,
+    trips,
+  };
 }
 
 export function isClickUpConfigured(): boolean {

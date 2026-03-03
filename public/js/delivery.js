@@ -95,9 +95,40 @@ async function loadClickUpLists() {
     });
     if (!defaultId && lists.length > 0) sel.selectedIndex = 0;
     if (hint) hint.textContent = 'Default: list name starts with today (YYYYMMDD) or description contains date.';
+    sel.removeEventListener('change', onListSelected);
+    sel.addEventListener('change', onListSelected);
+    onListSelected();
   } catch (err) {
     sel.innerHTML = '<option value="">Error</option>';
     if (hint) hint.textContent = err.message || 'Failed to load lists';
+  }
+}
+
+async function onListSelected() {
+  var sel = document.getElementById('clickupListSelect');
+  var routeInfo = document.getElementById('projectRouteInfo');
+  if (!sel || !routeInfo) return;
+  var listId = sel.value;
+  if (!listId) {
+    routeInfo.innerHTML = 'Select a list to see summary and start simulation.';
+    return;
+  }
+  routeInfo.innerHTML = 'Loading list data…';
+  try {
+    var resp = await fetch(DELIVERY_API + 'api/clickup/list-summary?listId=' + encodeURIComponent(listId));
+    var data = await resp.json();
+    if (!resp.ok) {
+      routeInfo.innerHTML = 'Could not load list: ' + (data.error || resp.status);
+      return;
+    }
+    var msg = data.message || ('Total: ' + data.totalTasks + ' trips');
+    var html = '<div style="font-size:13px;color:#e5e7eb;">' + msg + '</div>';
+    if (data.shortfall > 0) {
+      html += '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#dc2626;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
+    }
+    routeInfo.innerHTML = html;
+  } catch (err) {
+    routeInfo.innerHTML = 'Error loading list: ' + err.message;
   }
 }
 
@@ -122,9 +153,16 @@ async function startDeliveryFromClickUp() {
     }
     console.log('Delivery started from ClickUp:', data);
 
+    var routeInfo = document.getElementById('projectRouteInfo');
+    if (routeInfo) {
+      if (data.hint) {
+        routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + data.message + '</div><div style="margin-top:6px;font-size:12px;color:#f59e0b;">' + data.hint + '</div>';
+      } else {
+        routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + (data.message || 'Delivery started.') + ' On the way: ' + (data.inProgressCount || 0) + ' trucks.</div>';
+      }
+    }
     if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'none';
     if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'block';
-    // Keep ClickUp block (and list selection) visible so user can see which list is running or start from another list
     pollDeliveryStatus();
     deliveryInterval = setInterval(pollDeliveryStatus, 1000);
     if (typeof zoomToProjectRoutes === 'function') zoomToProjectRoutes();

@@ -36,3 +36,23 @@ export const CU_DEFAULT_LIST_ID = '901816296677';
 
 /** List name format for operation day: name must start with YYYYMMDD (e.g. 20260226_Zone1). */
 export const CU_LIST_NAME_DATE_PREFIX = true;
+
+/** Time Period dropdown: option id → label (HH:MM-HH:MM) for resolving planned-by-period. */
+export const CU_TIME_PERIOD_OPTIONS: Record<string, string> = {
+  '15932ad0-2d74-4d72-a633-71fe09f56d54': '06:00-07:00',
+  '26c93f69-5b10-4ffe-97e3-4362f7e7857f': '07:00-08:00',
+  'fa653f6f-22eb-431f-ad53-7d847a909dbb': '08:00-09:00',
+  'e955d4e9-4e20-4367-aaf9-01ce86669c17': '09:00-10:00',
+  'a0aed9f0-7278-423a-9b80-f60bfa6e0535': '10:00-11:00',
+  '80f32a59-9b8d-41c3-9901-3d210d921edc': '11:00-12:00',
+  '200d0b23-2193-4fdd-b688-f1353e7849d9': '12:00-13:00',
+  'e4597797-48b0-4c85-af0a-cec5e1ea43a3': '13:00-14:00',
+  '1ce14144-58e4-42ba-8713-53c8c3e4d943': '14:00-15:00',
+  'a8240730-40e1-407e-874f-033c156d73c3': '15:00-16:00',
+  '87ef48c6-5347-4b80-86b1-9fc93955a6ac': '16:00-17:00',
+  '937a572b-c8f6-4155-ba5f-9f3f13010d06': '17:00-18:00',
+  '1c720dee-b624-45ab-ac36-84bcb69a1d7f': '18:00-19:00',
+  'da674163-aa01-4870-a4b2-6d86d915a496': '19:00-20:00',
+  '74cd70eb-940e-46a0-bab8-f18b9eeb5734': '20:00-21:00',
+  'f93d9a72-4cc6-4b21-aa9a-fab4db4f7214': '21:00-22:00',
+};
