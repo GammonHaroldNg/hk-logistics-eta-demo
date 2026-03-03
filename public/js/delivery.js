@@ -111,6 +111,13 @@ function renderListSummary(data) {
   if (!summaryEl) return;
   var msg = data.message || ('Total: ' + data.totalTasks + ' trips');
   var html = '<div style="font-size:13px;color:#e5e7eb;">' + msg + '</div>';
+  var pct = data.totalTasks > 0 ? Math.min(100, Math.round((data.arrivedCount / data.totalTasks) * 100)) : 0;
+  html += '<div class="concrete-delivery-progress" style="margin-top:10px;">' +
+    '<div class="concrete-delivery-progress-track">' +
+      '<div class="concrete-delivery-progress-bar" style="width:' + pct + '%;"></div>' +
+      '<span class="concrete-delivery-progress-label">' + pct + '%</span>' +
+    '</div>' +
+    '</div>';
   if (data.shortfall > 0) {
     html += '<div class="overview-warning overview-warning-behind" style="margin-top:8px;padding:8px;border-radius:6px;font-size:12px;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
   }
