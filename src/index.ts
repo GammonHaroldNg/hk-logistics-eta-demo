@@ -711,9 +711,47 @@ app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
 });
 
 // Delivery status (simulation + trucks) - used by frontend for truck markers
-app.get('/api/delivery/status', (req: any, res: any) => {
+// When listId is provided: re-hydrate if running; if not running (e.g. new serverless instance), start session and hydrate so trucks are returned
+app.get('/api/delivery/status', async (req: any, res: any) => {
   try {
-    if (isDeliveryRunning()) tickDelivery(1);
+    const listId = (req.query?.listId || '').trim();
+    const defaultSpeed = 50;
+    if (listId && isClickUpConfigured()) {
+      if (!isDeliveryRunning()) {
+        try {
+          const pathGeometries = buildPathGeometries();
+          const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+          if (base && base.coordinates.length > 0) {
+            startDeliverySession(
+              { routeId: 0, targetVolume: 600, volumePerTruck: 8, trucksPerHour: 12, startTime: new Date(), defaultSpeed },
+              pathGeometries,
+            );
+            const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
+            const inProgressWithDeparture = trips.filter(
+              (t) => t.status === 'in_progress' && t.actual_start_at
+            );
+            await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
+          }
+        } catch (e) {
+          console.warn('Status: start and hydrate from ClickUp:', e);
+        }
+      } else {
+        tickDelivery(1);
+        try {
+          const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
+          const inProgressWithDeparture = trips.filter(
+            (t) => t.status === 'in_progress' && t.actual_start_at
+          );
+          if (inProgressWithDeparture.length > 0) {
+            await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
+          }
+        } catch (e) {
+          console.warn('Re-hydrate trucks from ClickUp:', e);
+        }
+      }
+    } else if (isDeliveryRunning()) {
+      tickDelivery(1);
+    }
     const status = getDeliveryStatus();
     const running = isDeliveryRunning();
     if (!status) {

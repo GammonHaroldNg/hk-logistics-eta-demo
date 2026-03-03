@@ -234,8 +234,10 @@ let lastGoodStatus = null;
 
 async function pollDeliveryStatus() {
   try {
+    var statusUrl = DELIVERY_API + '/api/delivery/status';
+    if (currentListId) statusUrl += '?listId=' + encodeURIComponent(currentListId);
     const fetches = [
-      fetch(DELIVERY_API + "/api/delivery/status"),
+      fetch(statusUrl),
       fetch(DELIVERY_API + "/api/delivery/simple-status"),
     ];
     if (currentListId) {
@@ -455,7 +457,7 @@ function updateTruckListFromSim(data) {
 
   if (trucks.length === 0) {
     truckList.innerHTML =
-      '<div style="padding:12px;color:#6b7280;font-size:13px;">No trucks dispatched yet.</div>';
+      '<div style="padding:12px;color:#9ca3af;font-size:13px;">No trucks on the way. Start from ClickUp with tasks that have status ON THE WAY and Actual Departure Time set.</div>';
   } else {
     truckList.innerHTML = trucks.map(function (t) {
       var statusColor = t.status === 'en-route' ? '#3b82f6' : '#22c55e';
@@ -470,18 +472,21 @@ function updateTruckListFromSim(data) {
       }
       var remainMin = Math.round(remainSec / 60);
       var travelMin = Math.round(t.elapsedSeconds / 60);
+      var vol = (t.concreteVolume != null && !Number.isNaN(t.concreteVolume)) ? t.concreteVolume : '—';
+      var volLabel = typeof vol === 'number' ? vol + ' m³' : vol;
 
       return '<div class="vehicle-item" style="border-left:3px solid ' + statusColor + ';">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<span class="vehicle-item-id">' + statusIcon + ' ' + t.truckId + '</span>' +
+          '<span class="vehicle-item-id">' + statusIcon + ' ' + (t.truckId || '—') + '</span>' +
           '<span style="font-size:11px;padding:2px 6px;border-radius:3px;background:' + statusColor + '20;color:' + statusColor + ';">' +
-            (t.status === 'en-route' ? t.progress + '%' : 'Arrived') +
+            (t.status === 'en-route' ? (t.progress != null ? t.progress : 0) + '%' : 'Arrived') +
           '</span>' +
         '</div>' +
         '<div class="vehicle-item-eta">' +
+          '<span style="color:#9ca3af;">Concrete: <b style="color:#e5e7eb;">' + volLabel + '</b></span>' +
           (t.status === 'en-route'
-            ? remainMin + ' min left · Arriving: ' + etaStr
-            : 'Arrived: ' + etaStr + ' · ' + travelMin + ' min trip · ' + t.concreteVolume + 'm³') +
+            ? ' · ' + remainMin + ' min left · ETA ' + etaStr
+            : ' · Arrived ' + etaStr + ' · ' + travelMin + ' min trip') +
         '</div></div>';
     }).join('');
   }
@@ -661,7 +666,7 @@ function buildPerformanceTimeline(tp, progress) {
 
 
 function updateTruckMarkers(trucks) {
-  // Trust the backend: if trucks is empty, remove all markers.
+  if (typeof map === 'undefined' || !map) return;
   var list = trucks || [];
 
   var currentIds = {};
