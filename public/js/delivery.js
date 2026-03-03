@@ -15,6 +15,8 @@ let deliveryInterval = null;
 let truckMarkers = {};
 let lastNonEmptyTrucks = [];
 let lastNonEmptyTruckList = [];
+/** When set, we show list summary and timeline from ClickUp list-summary (not DB simple-status). */
+let currentListId = '';
 
 
 // ===== RENDER CONFIG FORM =====
@@ -104,31 +106,44 @@ async function loadClickUpLists() {
   }
 }
 
+function renderListSummary(data) {
+  var summaryEl = document.getElementById('clickupListSummary');
+  if (!summaryEl) return;
+  var msg = data.message || ('Total: ' + data.totalTasks + ' trips');
+  var html = '<div style="font-size:13px;color:#e5e7eb;">' + msg + '</div>';
+  if (data.shortfall > 0) {
+    html += '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#dc2626;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
+  }
+  summaryEl.innerHTML = html;
+  if (data.hourlyTimeline && data.hourlyTimeline.length) {
+    updatePerformanceTimeline({ hourlyTimeline: data.hourlyTimeline }, {});
+  }
+}
+
 async function onListSelected() {
   var sel = document.getElementById('clickupListSelect');
   var routeInfo = document.getElementById('projectRouteInfo');
-  if (!sel || !routeInfo) return;
-  var listId = sel.value;
+  var summaryEl = document.getElementById('clickupListSummary');
+  if (!sel) return;
+  var listId = (sel.value || '').trim();
+  currentListId = listId;
   if (!listId) {
-    routeInfo.innerHTML = 'Select a list to see summary and start simulation.';
+    if (summaryEl) summaryEl.innerHTML = '';
+    if (routeInfo) routeInfo.innerHTML = 'Select a list to see summary. Then click Start from ClickUp to run simulation (only tasks with status &quot;ON THE WAY&quot; and Actual Departure Time set will show trucks on the map).';
     return;
   }
-  routeInfo.innerHTML = 'Loading list data…';
+  if (summaryEl) summaryEl.innerHTML = 'Loading list data…';
   try {
     var resp = await fetch(DELIVERY_API + 'api/clickup/list-summary?listId=' + encodeURIComponent(listId));
     var data = await resp.json();
     if (!resp.ok) {
-      routeInfo.innerHTML = 'Could not load list: ' + (data.error || resp.status);
+      if (summaryEl) summaryEl.innerHTML = 'Could not load list: ' + (data.error || resp.status);
       return;
     }
-    var msg = data.message || ('Total: ' + data.totalTasks + ' trips');
-    var html = '<div style="font-size:13px;color:#e5e7eb;">' + msg + '</div>';
-    if (data.shortfall > 0) {
-      html += '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#dc2626;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
-    }
-    routeInfo.innerHTML = html;
+    renderListSummary(data);
+    if (routeInfo) routeInfo.innerHTML = 'List summary above. Click <b>Start from ClickUp</b> to run simulation.';
   } catch (err) {
-    routeInfo.innerHTML = 'Error loading list: ' + err.message;
+    if (summaryEl) summaryEl.innerHTML = 'Error loading list: ' + err.message;
   }
 }
 
@@ -152,6 +167,7 @@ async function startDeliveryFromClickUp() {
       return;
     }
     console.log('Delivery started from ClickUp:', data);
+    currentListId = listId;
 
     var routeInfo = document.getElementById('projectRouteInfo');
     if (routeInfo) {
@@ -206,26 +222,35 @@ let lastGoodStatus = null;
 
 async function pollDeliveryStatus() {
   try {
-    const [simResp, simpleResp] = await Promise.all([
+    const fetches = [
       fetch(DELIVERY_API + "/api/delivery/status"),
       fetch(DELIVERY_API + "/api/delivery/simple-status"),
-    ]);
-
+    ];
+    if (currentListId) {
+      fetches.push(fetch(DELIVERY_API + 'api/clickup/list-summary?listId=' + encodeURIComponent(currentListId)));
+    }
+    const results = await Promise.all(fetches);
+    const simResp = results[0];
+    const simpleResp = results[1];
     const simData = await simResp.json();
     const simpleData = await simpleResp.json();
+    let listSummaryData = null;
+    if (currentListId && results[2]) {
+      try { listSummaryData = await results[2].json(); } catch (_) {}
+    }
 
     if (!simResp.ok || !simData.running) {
       console.log("Delivery session not running");
       return;
     }
 
-    // trucks still from sim
     updateTruckMarkers(simData.trucks || []);
     updateTruckListFromSim(simData);
 
-    // overview + timeline from simple backend logic
     if (simpleData.ok && simpleData.hasPlan) {
       updateOverviewFromSimple(simpleData);
+    } else if (listSummaryData && listSummaryData.ok) {
+      renderListSummary(listSummaryData);
     }
   } catch (err) {
     console.error("Poll error", err);

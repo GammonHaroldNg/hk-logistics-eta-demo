@@ -41,10 +41,9 @@ function getCustomField(task: any, fieldId: string): any {
 /**
  * Parse ClickUp date value to ISO string. Handles:
  * - number (ms timestamp)
- * - ISO string
- * - US display: "3/2/26, 6:52am" / "2/3/26, 6:30am"
- * - "M/D/YY HH:MM" (24h)
- * - Time only "06:00:00" (use today's date)
+ * - string that is numeric (ms)
+ * - object with .timestamp or .value (ms)
+ * - ISO string, US display "3/2/26, 6:52am", "M/D/YY HH:MM", time only "06:00:00"
  */
 function parseDateValue(v: any): string | null {
   if (v == null) return null;
@@ -56,9 +55,18 @@ function parseDateValue(v: any): string | null {
     } else if (typeof v === 'string') {
       const s = String(v).trim();
       if (!s) return null;
-      const parsed = parseDateString(s);
-      if (!parsed) return null;
-      d = parsed;
+      const asNum = /^\d+$/.test(s) ? parseInt(s, 10) : NaN;
+      if (Number.isFinite(asNum) && asNum > 0) {
+        d = new Date(asNum);
+      } else {
+        const parsed = parseDateString(s);
+        if (!parsed) return null;
+        d = parsed;
+      }
+    } else if (typeof v === 'object' && v !== null) {
+      const raw = (v as any).timestamp ?? (v as any).value ?? (v as any).date;
+      const parsed = parseDateValue(raw);
+      return parsed;
     } else {
       return null;
     }
@@ -337,6 +345,8 @@ export interface ListSummary {
   arrivedCount: number;
   plannedByPeriod: Record<string, number>;
   actualByPeriod: Record<string, number>;
+  /** For Planned vs Actual timeline: { hour (7-23), planned, actual } */
+  hourlyTimeline: Array<{ hour: number; planned: number; actual: number }>;
   progressPercent: number;
   shortfall: number;
   message: string;
@@ -376,6 +386,18 @@ export async function getListSummary(listId: string): Promise<ListSummary> {
     shortfall += planned - actual;
   }
 
+  const displayStart = 7;
+  const displayEnd = 24;
+  const hourlyTimeline: Array<{ hour: number; planned: number; actual: number }> = [];
+  for (let h = displayStart; h < displayEnd; h++) {
+    const label = hourToPeriodLabel(h);
+    hourlyTimeline.push({
+      hour: h,
+      planned: plannedByPeriod[label] ?? 0,
+      actual: actualByPeriod[label] ?? 0,
+    });
+  }
+
   const message = totalTasks === 0
     ? 'No tasks in this list. Add tasks or select another list.'
     : `Total: ${totalTasks} trips · On the way: ${onTheWayCount} · Arrived: ${arrivedCount} (${progressPercent}%)`;
@@ -387,6 +409,7 @@ export async function getListSummary(listId: string): Promise<ListSummary> {
     arrivedCount,
     plannedByPeriod,
     actualByPeriod,
+    hourlyTimeline,
     progressPercent,
     shortfall,
     message,
