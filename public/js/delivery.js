@@ -112,7 +112,7 @@ function renderListSummary(data) {
   var msg = data.message || ('Total: ' + data.totalTasks + ' trips');
   var html = '<div style="font-size:13px;color:#e5e7eb;">' + msg + '</div>';
   if (data.shortfall > 0) {
-    html += '<div style="margin-top:8px;padding:8px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#dc2626;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
+    html += '<div class="overview-warning overview-warning-behind" style="margin-top:8px;padding:8px;border-radius:6px;font-size:12px;">⚠️ Behind schedule: +' + data.shortfall + ' trips</div>';
   }
   summaryEl.innerHTML = html;
   if (data.hourlyTimeline && data.hourlyTimeline.length) {
@@ -177,6 +177,11 @@ async function startDeliveryFromClickUp() {
         routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + (data.message || 'Delivery started.') + ' On the way: ' + (data.inProgressCount || 0) + ' trucks.</div>';
       }
     }
+    try {
+      var sumResp = await fetch(DELIVERY_API + 'api/clickup/list-summary?listId=' + encodeURIComponent(listId));
+      var sumData = await sumResp.json();
+      if (sumData.ok) renderListSummary(sumData);
+    } catch (e) { console.warn('Refresh list summary after start:', e); }
     if (document.getElementById('btnStartDelivery')) document.getElementById('btnStartDelivery').style.display = 'none';
     if (document.getElementById('btnStopDelivery')) document.getElementById('btnStopDelivery').style.display = 'block';
     pollDeliveryStatus();

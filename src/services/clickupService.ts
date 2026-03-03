@@ -168,19 +168,29 @@ function mapClickUpStatus(task: any, actualArrival: string | null): 'planned' | 
   return 'planned';
 }
 
-/** Resolve Time Period value (dropdown option id, or object with id/name, or "HH:MM-HH:MM" string) to label. */
+/** Normalize period label to "HH:00-HH:00" so keys match across API formats. Accepts "10:00-11:00" or "10:0-11:0" or "10:00 - 11:00". */
+function normalizePeriodLabel(s: string): string {
+  const m = s.trim().replace(/\s+/g, ' ').match(/^(\d{1,2}):(\d{1,2})\s*-\s*(\d{1,2}):(\d{1,2})$/);
+  if (!m) return s.trim();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(parseInt(m[1]!, 10))}:${pad(parseInt(m[2]!, 10))}-${pad(parseInt(m[3]!, 10))}:${pad(parseInt(m[4]!, 10))}`;
+}
+
+/** Resolve Time Period value (dropdown option id, or object with id/name, or array, or "HH:MM-HH:MM" string) to normalized label. */
 function resolveTimePeriodLabel(value: any): string | null {
   if (value == null) return null;
+  if (Array.isArray(value) && value.length > 0) return resolveTimePeriodLabel(value[0]);
   if (typeof value === 'string') {
     const s = value.trim();
-    if (/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(s)) return s;
-    return CU_TIME_PERIOD_OPTIONS[s] ?? null;
+    if (/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(s)) return normalizePeriodLabel(s);
+    const resolved = CU_TIME_PERIOD_OPTIONS[s] ?? null;
+    return resolved ? normalizePeriodLabel(resolved) : null;
   }
   if (typeof value === 'object' && value !== null) {
     const name = (value as any).name;
-    if (typeof name === 'string' && name.trim()) return name.trim();
+    if (typeof name === 'string' && name.trim()) return normalizePeriodLabel(name.trim());
     const id = (value as any).id;
-    if (typeof id === 'string' && CU_TIME_PERIOD_OPTIONS[id]) return CU_TIME_PERIOD_OPTIONS[id];
+    if (typeof id === 'string' && CU_TIME_PERIOD_OPTIONS[id]) return normalizePeriodLabel(CU_TIME_PERIOD_OPTIONS[id]);
   }
   return null;
 }
@@ -358,6 +368,8 @@ export interface ListSummary {
   ok: boolean;
   totalTasks: number;
   onTheWayCount: number;
+  /** On the way with Actual Departure set (matches trucks on map / start-from-clickup count). */
+  onTheWayWithDepartureCount: number;
   arrivedCount: number;
   plannedByPeriod: Record<string, number>;
   actualByPeriod: Record<string, number>;
@@ -375,12 +387,15 @@ export async function getListSummary(listId: string): Promise<ListSummary> {
   const totalTasks = trips.length;
   const arrived = trips.filter((t) => t.status === 'completed');
   const onTheWay = trips.filter((t) => t.status === 'in_progress');
+  const onTheWayWithDeparture = trips.filter((t) => t.status === 'in_progress' && t.actual_start_at);
   const arrivedCount = arrived.length;
   const onTheWayCount = onTheWay.length;
+  const onTheWayWithDepartureCount = onTheWayWithDeparture.length;
 
   const plannedByPeriod: Record<string, number> = {};
   for (const t of trips) {
-    const label = t.time_period ?? '';
+    const raw = t.time_period ?? '';
+    const label = raw ? normalizePeriodLabel(raw) : '';
     if (label) plannedByPeriod[label] = (plannedByPeriod[label] ?? 0) + 1;
   }
 
@@ -416,12 +431,13 @@ export async function getListSummary(listId: string): Promise<ListSummary> {
 
   const message = totalTasks === 0
     ? 'No tasks in this list. Add tasks or select another list.'
-    : `Total: ${totalTasks} trips · On the way: ${onTheWayCount} · Arrived: ${arrivedCount} (${progressPercent}%)`;
+    : `Total: ${totalTasks} trips · On the way: ${onTheWayWithDepartureCount} · Arrived: ${arrivedCount} (${progressPercent}%)`;
 
   return {
     ok: true,
     totalTasks,
     onTheWayCount,
+    onTheWayWithDepartureCount,
     arrivedCount,
     plannedByPeriod,
     actualByPeriod,

@@ -75,6 +75,27 @@ main {
   line-height: 1.6;
 }
 
+/* ClickUp summary block: dark background, light text */
+.clickup-summary-dark {
+  background: #1f2937 !important;
+  border: 1px solid #4b5563;
+  color: #e5e7eb;
+}
+.clickup-summary-dark b,
+.clickup-summary-dark strong {
+  color: #f3f4f6;
+}
+.clickup-summary-dark .overview-warning-behind {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+  color: #fecaca;
+}
+.clickup-summary-dark .overview-warning-ok {
+  background: #14532d;
+  border-color: #166534;
+  color: #bbf7d0;
+}
+
 .route-info-item {
   margin-bottom: 8px;
 }
