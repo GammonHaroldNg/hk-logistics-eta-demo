@@ -689,19 +689,19 @@ app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
     );
 
     const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-    // Simulation on map: only trips with status "ON THE WAY" and Actual Departure Time set get a truck
-    const inProgressWithDeparture = trips.filter(
-      (t) => t.status === 'in_progress' && t.actual_start_at
+    // Simulation: ON THE WAY trips get a truck; use Actual Departure or failing that Planned (Time Period) start
+    const inProgressWithStart = trips.filter(
+      (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
     );
-    await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
+    await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
 
     res.json({
       ...result,
       message: 'Delivery started from ClickUp list',
       tripCount: trips.length,
-      inProgressCount: inProgressWithDeparture.length,
-      hint: inProgressWithDeparture.length === 0 && trips.some((t) => t.status === 'in_progress')
-        ? 'No trucks on map: set Actual Departure Time for "ON THE WAY" tasks to see simulation.'
+      inProgressCount: inProgressWithStart.length,
+      hint: inProgressWithStart.length === 0 && trips.some((t) => t.status === 'in_progress')
+        ? 'No trucks on map: set Actual Departure Time or Time Period for "ON THE WAY" tasks.'
         : undefined,
     });
   } catch (e: any) {
@@ -727,10 +727,10 @@ app.get('/api/delivery/status', async (req: any, res: any) => {
               pathGeometries,
             );
             const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-            const inProgressWithDeparture = trips.filter(
-              (t) => t.status === 'in_progress' && t.actual_start_at
+            const inProgressWithStart = trips.filter(
+              (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
             );
-            await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
+            await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
           }
         } catch (e) {
           console.warn('Status: start and hydrate from ClickUp:', e);
@@ -739,11 +739,11 @@ app.get('/api/delivery/status', async (req: any, res: any) => {
         tickDelivery(1);
         try {
           const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-          const inProgressWithDeparture = trips.filter(
-            (t) => t.status === 'in_progress' && t.actual_start_at
+          const inProgressWithStart = trips.filter(
+            (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
           );
-          if (inProgressWithDeparture.length > 0) {
-            await hydrateFromTrips(inProgressWithDeparture as import('./services/truckService').DbTrip[], defaultSpeed);
+          if (inProgressWithStart.length > 0) {
+            await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
           }
         } catch (e) {
           console.warn('Re-hydrate trucks from ClickUp:', e);

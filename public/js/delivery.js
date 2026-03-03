@@ -136,7 +136,7 @@ async function onListSelected() {
   currentListId = listId;
   if (!listId) {
     if (summaryEl) summaryEl.innerHTML = '';
-    if (routeInfo) routeInfo.innerHTML = 'Select a list to see summary. Then click Start from ClickUp to run simulation (only tasks with status &quot;ON THE WAY&quot; and Actual Departure Time set will show trucks on the map).';
+    if (routeInfo) routeInfo.innerHTML = 'Select a list above to see summary. Simulation starts automatically for tasks with status ON THE WAY (uses Actual Departure Time or Time Period).';
     return;
   }
   if (summaryEl) summaryEl.innerHTML = 'Loading list data…';
@@ -148,20 +148,15 @@ async function onListSelected() {
       return;
     }
     renderListSummary(data);
-    if (routeInfo) routeInfo.innerHTML = 'List summary above. Click <b>Start from ClickUp</b> to run simulation.';
+    if (routeInfo) routeInfo.innerHTML = 'Simulation starting…';
+    await startSimulationFromList(listId);
   } catch (err) {
     if (summaryEl) summaryEl.innerHTML = 'Error loading list: ' + err.message;
   }
 }
 
-// ===== START FROM CLICKUP =====
-async function startDeliveryFromClickUp() {
-  var listIdEl = document.getElementById('clickupListSelect');
-  var listId = listIdEl ? listIdEl.value : '';
-  if (!listId) {
-    alert('Please select a ClickUp list (or ensure lists loaded).');
-    return;
-  }
+// ===== AUTO-START SIMULATION (no button) =====
+async function startSimulationFromList(listId) {
   try {
     var resp = await fetch(DELIVERY_API + 'api/delivery/start-from-clickup', {
       method: 'POST',
@@ -170,7 +165,8 @@ async function startDeliveryFromClickUp() {
     });
     var data = await resp.json();
     if (!resp.ok) {
-      alert('Error: ' + (data.error || resp.status));
+      var routeInfo = document.getElementById('projectRouteInfo');
+      if (routeInfo) routeInfo.innerHTML = '<span style="color:#f59e0b;">Could not start simulation: ' + (data.error || resp.status) + '</span>';
       return;
     }
     console.log('Delivery started from ClickUp:', data);
@@ -181,7 +177,7 @@ async function startDeliveryFromClickUp() {
       if (data.hint) {
         routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + data.message + '</div><div style="margin-top:6px;font-size:12px;color:#f59e0b;">' + data.hint + '</div>';
       } else {
-        routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + (data.message || 'Delivery started.') + ' On the way: ' + (data.inProgressCount || 0) + ' trucks.</div>';
+        routeInfo.innerHTML = '<div style="font-size:13px;color:#e5e7eb;">' + (data.message || 'Simulation running.') + ' On the way: ' + (data.inProgressCount || 0) + ' trucks.</div>';
       }
     }
     try {
@@ -195,8 +191,9 @@ async function startDeliveryFromClickUp() {
     deliveryInterval = setInterval(pollDeliveryStatus, 1000);
     if (typeof zoomToProjectRoutes === 'function') zoomToProjectRoutes();
   } catch (err) {
-    console.error('Failed to start from ClickUp:', err);
-    alert('Failed to start from ClickUp: ' + err.message);
+    console.error('Failed to start simulation:', err);
+    var routeInfo = document.getElementById('projectRouteInfo');
+    if (routeInfo) routeInfo.innerHTML = '<span style="color:#f59e0b;">Failed to start: ' + err.message + '</span>';
   }
 }
 
@@ -748,9 +745,7 @@ function makeTruckIcon(bgColor, emoji) {
   });
 }
 
-// Bind ClickUp start button and expose loadClickUpLists for panel show
+// Expose loadClickUpLists for panel show (simulation auto-starts on list select)
 (function() {
-  var btn = document.getElementById('btnStartFromClickUp');
-  if (btn) btn.addEventListener('click', startDeliveryFromClickUp);
   if (typeof window !== 'undefined') window.loadClickUpLists = loadClickUpLists;
 })();

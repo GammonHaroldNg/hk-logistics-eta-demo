@@ -42,7 +42,7 @@ function getCustomField(task: any, fieldId: string): any {
  * Parse ClickUp date value to ISO string. Handles:
  * - number (ms timestamp)
  * - string that is numeric (ms)
- * - object with .timestamp or .value (ms)
+ * - object with .timestamp, .value, .date, .datetime, or any numeric property
  * - ISO string, US display "3/2/26, 6:52am", "M/D/YY HH:MM", time only "06:00:00"
  */
 function parseDateValue(v: any): string | null {
@@ -64,9 +64,20 @@ function parseDateValue(v: any): string | null {
         d = parsed;
       }
     } else if (typeof v === 'object' && v !== null) {
-      const raw = (v as any).timestamp ?? (v as any).value ?? (v as any).date;
-      const parsed = parseDateValue(raw);
-      return parsed;
+      const obj = v as Record<string, unknown>;
+      const raw =
+        obj.timestamp ?? obj.value ?? obj.date ?? obj.datetime ??
+        (typeof obj.time === 'number' ? obj.time : undefined);
+      const parsed = raw != null ? parseDateValue(raw) : null;
+      if (parsed) return parsed;
+      for (const key of Object.keys(obj)) {
+        const val = obj[key];
+        if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+          const fromNum = parseDateValue(val);
+          if (fromNum) return fromNum;
+        }
+      }
+      return null;
     } else {
       return null;
     }
@@ -159,11 +170,13 @@ function plannedStartFromTimePeriod(timePeriod: any, today: Date): string | null
 
 /** Map ClickUp status to planned | in_progress | completed. "ON THE WAY" = animate; Not started = no marker; ARRIVED/REJECTED/COMPLETE = ended. */
 function mapClickUpStatus(task: any, actualArrival: string | null): 'planned' | 'in_progress' | 'completed' {
-  const raw = (task.status?.status || '').trim();
+  const statusObj = task.status;
+  const raw = (typeof statusObj === 'string' ? statusObj : (statusObj?.status ?? statusObj?.type ?? '')).trim();
   const su = raw.toLowerCase().replace(/\s+/g, ' ');
   if (actualArrival) return 'completed';
   if (CU_STATUS_ENDED.some((end) => su === end || su.includes(end))) return 'completed';
-  if (su === 'on the way' || raw.toUpperCase() === 'ON THE WAY' || su === 'in progress' || su.includes('in progress')) return 'in_progress';
+  if (su === 'on the way' || raw.toUpperCase() === 'ON THE WAY' || su.includes('on the way') ||
+      su === 'in progress' || su.includes('in progress')) return 'in_progress';
   if (su === 'not started' || su === 'to do' || su === 'open' || su === '') return 'planned';
   return 'planned';
 }
@@ -387,10 +400,10 @@ export async function getListSummary(listId: string): Promise<ListSummary> {
   const totalTasks = trips.length;
   const arrived = trips.filter((t) => t.status === 'completed');
   const onTheWay = trips.filter((t) => t.status === 'in_progress');
-  const onTheWayWithDeparture = trips.filter((t) => t.status === 'in_progress' && t.actual_start_at);
+  const onTheWayWithStart = trips.filter((t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at));
   const arrivedCount = arrived.length;
   const onTheWayCount = onTheWay.length;
-  const onTheWayWithDepartureCount = onTheWayWithDeparture.length;
+  const onTheWayWithDepartureCount = onTheWayWithStart.length;
 
   const plannedByPeriod: Record<string, number> = {};
   for (const t of trips) {
