@@ -665,9 +665,11 @@ function updateTruckMarkers(trucks) {
   });
 
   list.forEach(function (t) {
-    if (!t.position || t.position[0] === 0) return;
-
-    var latLng = [t.position[1], t.position[0]];
+    if (!t.position || !Array.isArray(t.position) || t.position.length < 2) return;
+    var lng = Number(t.position[0]);
+    var lat = Number(t.position[1]);
+    if (Number.isNaN(lng) || Number.isNaN(lat)) return;
+    var latLng = [lat, lng];
     var isArrived = t.status === 'arrived';
     var bgColor = isArrived ? '#22c55e' : '#3b82f6';
     var emoji = isArrived ? '✅' : '🚛';

@@ -168,7 +168,7 @@ function mapClickUpStatus(task: any, actualArrival: string | null): 'planned' | 
   return 'planned';
 }
 
-/** Resolve Time Period value (dropdown option id, or object with name, or "HH:MM-HH:MM" string) to label. */
+/** Resolve Time Period value (dropdown option id, or object with id/name, or "HH:MM-HH:MM" string) to label. */
 function resolveTimePeriodLabel(value: any): string | null {
   if (value == null) return null;
   if (typeof value === 'string') {
@@ -176,7 +176,12 @@ function resolveTimePeriodLabel(value: any): string | null {
     if (/^\d{1,2}:\d{2}-\d{1,2}:\d{2}$/.test(s)) return s;
     return CU_TIME_PERIOD_OPTIONS[s] ?? null;
   }
-  if (typeof value === 'object' && value !== null && typeof (value as any).name === 'string') return (value as any).name.trim() || null;
+  if (typeof value === 'object' && value !== null) {
+    const name = (value as any).name;
+    if (typeof name === 'string' && name.trim()) return name.trim();
+    const id = (value as any).id;
+    if (typeof id === 'string' && CU_TIME_PERIOD_OPTIONS[id]) return CU_TIME_PERIOD_OPTIONS[id];
+  }
   return null;
 }
 
@@ -295,14 +300,25 @@ export async function fetchListsWithDefault(spaceId: string = CU_SPACE_ID): Prom
   return { lists, defaultListId };
 }
 
+const CLICKUP_TASKS_PAGE_SIZE = 100;
+
+/** Fetch all tasks for a list (paginated). ClickUp returns max 100 per request. */
 export async function fetchTasksForList(listId: string): Promise<any[]> {
-  const res = await fetch(
-    `${CLICKUP_API_BASE}/list/${listId}/task?archived=false&include_closed=true&subtasks=false`,
-    { headers: authHeaders() }
-  );
-  if (!res.ok) throw new Error(`ClickUp tasks ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  return data.tasks || [];
+  const all: any[] = [];
+  let page = 0;
+  for (;;) {
+    const res = await fetch(
+      `${CLICKUP_API_BASE}/list/${listId}/task?archived=false&include_closed=true&subtasks=false&page=${page}`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) throw new Error(`ClickUp tasks ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const tasks = data.tasks || [];
+    all.push(...tasks);
+    if (tasks.length < CLICKUP_TASKS_PAGE_SIZE) break;
+    page += 1;
+  }
+  return all;
 }
 
 /** Fetch tasks for a list and return as trips (with pathId). */
@@ -311,13 +327,13 @@ export async function fetchTripsFromList(listId: string): Promise<ClickUpTrip[]>
   return tasks.map((t: any) => clickUpTaskToTrip(t));
 }
 
-/** Hour (0-23) in Hong Kong for an ISO date string. */
+/** Hour (0-23) in Hong Kong for an ISO date string. HK = UTC+8, so correct on any server TZ. */
 function getHourHK(isoDate: string | null): number | null {
   if (!isoDate) return null;
   try {
     const d = new Date(isoDate);
-    const hk = new Date(d.toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong' }));
-    return hk.getHours();
+    if (Number.isNaN(d.getTime())) return null;
+    return (d.getUTCHours() + 8) % 24;
   } catch {
     return null;
   }

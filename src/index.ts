@@ -713,6 +713,7 @@ app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
 // Delivery status (simulation + trucks) - used by frontend for truck markers
 app.get('/api/delivery/status', (req: any, res: any) => {
   try {
+    if (isDeliveryRunning()) tickDelivery(1);
     const status = getDeliveryStatus();
     const running = isDeliveryRunning();
     if (!status) {
