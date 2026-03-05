@@ -1,9 +1,8 @@
-import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
 
-import { query } from './db'; // used by db-test only
+import { query } from './db';
 
 import { corridors, updateCorridorState } from './services/tdas';
 import { fetchTrafficSpeedMap, speedToState } from './services/trafficService';
@@ -28,26 +27,18 @@ import {
   getTotalConcreteDelivered,
   getActiveCount,
   getCompletedCount,
+  getDeliveryRecords,
   hydrateFromTrips,
+  addTruckFromTrip,
+  completeTruckFromDb,
+  DbTrip,
   pruneInactiveTrips,
+  clearActiveTrucks
 } from './services/truckService';
-import {
-  getTodayInProgressTrips,
-  getTodayTrips,
-  getTodayCompletedTripsWithArrivalHour,
-  getCurrentHKHour,
-  insertTrip,
-  completeTrip,
-} from './repositories/tripsRepository';
-import {
-  getTodayDeliveryTarget,
-  getTodayTruckPlan,
-  getDeliveryTargets,
-} from './repositories/deliveryTargetsRepository';
-import { CONFIG } from './config';
+
 
 const app = express();
-const PORT = CONFIG.PORT;
+const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
@@ -55,26 +46,113 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 let lastTrafficUpdateTime: Date | null = null;
 
-import { PROJECT_ROUTE_IDS, PROJECT_PATHS, PathId } from './constants/projectRoutes';
-import { buildPathGeometries } from './services/pathService';
 import {
-  fetchFoldersForSpace,
-  fetchListsForFolder,
-  fetchFolderlessListsForSpace,
-  fetchListsWithDefault,
-  fetchTripsFromList,
-  getListSummary,
-  isClickUpConfigured,
-  type ClickUpTrip,
-} from './services/clickupService';
-import { CU_SPACE_ID } from './constants/clickupConfig';
+  PROJECT_ROUTE_IDS,
+  PROJECT_PATHS,
+  PathId,
+} from './constants/projectRoutes';
+
+
 
 // ===== HELPERS =====
 
-function findRoute(routeId: number): { geometry: unknown; properties: Record<string, unknown> } | null {
-  const corridor = getAllCorridors()[routeId];
-  return corridor ?? null;
+function findRoute(routeId: number): any {
+  return getAllCorridors()[routeId] || null;
 }
+
+function segDist(a: number[], b: number[]): number {
+  const dx = a[0]! - b[0]!;
+  const dy = a[1]! - b[1]!;
+  return dx * dx + dy * dy;
+}
+
+function stitchPath(routeIds: number[]): { coordinates: number[][]; segmentCount: number } | null {
+  const allCorridors = getAllCorridors();
+  const segments: Array<{ routeId: number; coords: number[][] }> = [];
+
+  for (const routeId of routeIds) {
+    const corridor: any = allCorridors[routeId];
+    if (!corridor || !corridor.geometry) continue;
+    const geomType: string = corridor.geometry.type;
+    const geomCoords: any = corridor.geometry.coordinates;
+
+    const coords: number[][] = [];
+    if (geomType === "MultiLineString") {
+      for (let li = 0; li < geomCoords.length; li++) {
+        const line: any = geomCoords[li];
+        for (let ci = 0; ci < line.length; ci++) {
+          coords.push(line[ci]);
+        }
+      }
+    } else if (geomType === "LineString") {
+      for (let ci = 0; ci < geomCoords.length; ci++) {
+        coords.push(geomCoords[ci]);
+      }
+    }
+
+    if (coords.length >= 2) {
+      segments.push({ routeId, coords });
+    }
+  }
+
+  if (segments.length === 0) return null;
+
+  const START: number[] = [113.99065, 22.41476];
+  const used = new Set<number>();
+  const orderedCoords: number[][] = [];
+  let cursor: number[] = START;
+
+  for (let step = 0; step < segments.length; step++) {
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    let bestReverse = false;
+
+    for (let i = 0; i < segments.length; i++) {
+      if (used.has(i)) continue;
+      const seg = segments[i]!;
+      const first = seg.coords[0]!;
+      const last = seg.coords[seg.coords.length - 1]!;
+      const dFirst = segDist(cursor, first);
+      const dLast = segDist(cursor, last);
+
+      if (dFirst < bestDist) {
+        bestDist = dFirst;
+        bestIdx = i;
+        bestReverse = false;
+      }
+      if (dLast < bestDist) {
+        bestDist = dLast;
+        bestIdx = i;
+        bestReverse = true;
+      }
+    }
+
+    if (bestIdx === -1) break;
+    used.add(bestIdx);
+
+    const matched = segments[bestIdx]!;
+    const segCoords = bestReverse ? matched.coords.slice().reverse() : matched.coords;
+
+    if (orderedCoords.length > 0) {
+      const lastAdded = orderedCoords[orderedCoords.length - 1]!;
+      const firstCoord = segCoords[0]!;
+      const startIdx = segDist(lastAdded, firstCoord) < 1e-10 ? 1 : 0;
+      for (let ci = startIdx; ci < segCoords.length; ci++) {
+        orderedCoords.push(segCoords[ci]!);
+      }
+    } else {
+      for (let ci = 0; ci < segCoords.length; ci++) {
+        orderedCoords.push(segCoords[ci]!);
+      }
+    }
+
+    cursor = orderedCoords[orderedCoords.length - 1]!;
+  }
+
+  console.log('Stitched ' + used.size + '/' + segments.length + ' segments, ' + orderedCoords.length + ' total coords');
+  return { coordinates: orderedCoords, segmentCount: used.size };
+}
+
 
 // ===== TRAFFIC UPDATE =====
 
@@ -105,39 +183,83 @@ async function updateTrafficData(): Promise<void> {
 }
 
 // ===== STARTUP =====
-// On Vercel, run init in setImmediate so the module loads quickly and the first request can be served.
-const isVercel = process.env.VERCEL === 'true';
 
-async function runStartup(): Promise<void> {
+(async () => {
   try {
     await loadCorridorsFromGeoJSON();
     console.log('Project corridors loaded:', Object.keys(getAllCorridors()).length);
 
     await updateTrafficData();
 
+    // Helper: rebuild trucks in RAM from today's in_progress trips in DB
+    // inside the startup IIFE, after updateTrafficData()
     async function syncTrucksFromDb() {
       if (!process.env.DATABASE_URL) return;
-      try {
-        const inProgress = await getTodayInProgressTrips();
-        await hydrateFromTrips(inProgress as import('./services/truckService').DbTrip[], 40);
-        pruneInactiveTrips(inProgress.map((t) => t.id));
-        console.log('Synced trucks from DB:', inProgress.length);
-      } catch (e) {
-        console.error('Failed to sync trucks', e);
-      }
+
+      const sql = `
+        select
+          id,
+          vehicle_id,
+          actual_start_at,
+          actual_arrival_at,
+          status,
+          corrected
+        from public.trips
+        where (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+              (now() at time zone 'Asia/Hong_Kong')::date
+        order by actual_start_at asc
+      `;
+      const result = await query(sql);
+      const rows = result.rows as DbTrip[];
+
+      const inProgress = rows.filter(t => t.status === 'in_progress');
+
+      // Add/update all in_progress trips
+      await hydrateFromTrips(inProgress, 40);
+
+      // Remove trucks whose trips are no longer in_progress
+      const activeIds = inProgress.map(t => t.id);
+      pruneInactiveTrips(activeIds);
+
+      console.log('Synced trucks from DB:', activeIds.length);
     }
 
     async function loadTodayDeliveryTarget() {
-      const target = await getTodayDeliveryTarget();
-      if (!target) {
+      const sql = `
+        select
+          operation_date,
+          target_concrete_volume,
+          work_start_hour,
+          work_end_hour,
+          planned_trucks_per_hour
+        from public.delivery_targets
+        where operation_date = (now() at time zone 'Asia/Hong_Kong')::date
+        order by updated_at desc, created_at desc
+        limit 1
+      `;
+
+      const result = await query(sql);
+      const row = result.rows[0];
+
+      if (!row) {
         console.warn('No delivery_targets row for today, using defaults');
         return null;
       }
-      return target;
+
+      return {
+        targetVolume: Number(row.target_concrete_volume) || 600,
+        trucksPerHour: Number(row.planned_trucks_per_hour) || 12,
+        startTime: row.work_start_hour as string,
+        endTime: row.work_end_hour as string,
+      };
     }
 
     // 1) Auto‑init delivery session so path geometries + config exist
-    const pathGeometries = buildPathGeometries();
+    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
+      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
+      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
+      REDLAND: stitchPath(PROJECT_PATHS.REDLAND),
+    };
 
     const base = pathGeometries.GAMMON_TM;
     if (base && base.coordinates.length > 0) {
@@ -208,34 +330,105 @@ async function runStartup(): Promise<void> {
     buildFilteredCorridors(tdasRouteIds);
     console.log('Filtered corridors ready:', Object.keys(getFilteredCorridors()).length);
 
-    if (!isVercel) {
-      setInterval(updateTrafficData, CONFIG.TRAFFIC_UPDATE_INTERVAL_MS);
-      setInterval(() => {
-        if (isDeliveryRunning()) tickDelivery(1);
-      }, CONFIG.DELIVERY_TICK_INTERVAL_MS);
-      setInterval(
-        () => syncTrucksFromDb().catch((err) => console.error('Failed to sync trucks', err)),
-        CONFIG.TRUCK_SYNC_INTERVAL_MS
-      );
-    }
+    setInterval(updateTrafficData, 60000);
+    setInterval(() => {
+      if (isDeliveryRunning()) {
+        tickDelivery(1);
+      }
+    }, 1000);
 
+    setInterval(() => {
+      syncTrucksFromDb().catch(err => console.error('Failed to sync trucks', err));
+    }, 5000);
+
+    // 2) Initial sync of trucks from DB
     try {
       await syncTrucksFromDb();
     } catch (e) {
       console.error('Failed to sync trucks from trips', e);
     }
 
-    console.log('Server initialized', isVercel ? '(Vercel, no intervals)' : ', delivery tick running');
+    console.log('Server initialized, delivery tick running');
   } catch (err) {
     console.error('Failed to initialize app:', err);
   }
+})();
+
+async function loadTodayTruckPlan() {
+  const sql = `
+    select
+      operation_date,
+      target_concrete_volume,
+      work_start_hour,
+      work_end_hour,
+      planned_trucks_per_hour,
+      h07_08, h08_09, h09_10, h10_11,
+      h11_12, h12_13, h13_14, h14_15,
+      h15_16, h16_17, h17_18, h18_19,
+      h19_20, h20_21, h21_22, h22_23,
+      h23_00
+    from public.delivery_targets
+    where operation_date = (now() at time zone 'Asia/Hong_Kong')::date
+    order by updated_at desc, created_at desc
+    limit 1
+  `;
+  const result = await query(sql);
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const workStart = row.work_start_hour as string;
+  const workEnd   = row.work_end_hour as string;
+
+  // per-hour plan (null -> 0)
+  const hourlyPlan: Record<number, number> = {
+    7:  Number(row.h07_08 || 0),
+    8:  Number(row.h08_09 || 0),
+    9:  Number(row.h09_10 || 0),
+    10: Number(row.h10_11 || 0),
+    11: Number(row.h11_12 || 0),
+    12: Number(row.h12_13 || 0),
+    13: Number(row.h13_14 || 0),
+    14: Number(row.h14_15 || 0),
+    15: Number(row.h15_16 || 0),
+    16: Number(row.h16_17 || 0),
+    17: Number(row.h17_18 || 0),
+    18: Number(row.h18_19 || 0),
+    19: Number(row.h19_20 || 0),
+    20: Number(row.h20_21 || 0),
+    21: Number(row.h21_22 || 0),
+    22: Number(row.h22_23 || 0),
+    23: Number(row.h23_00 || 0),
+  };
+
+  const plannedTripsTotal = Object.values(hourlyPlan).reduce((s, v) => s + v, 0);
+
+  // keep old trucksPerHour / workingHours for backwards‑compat
+  const [shRaw, smRaw] = workStart.split(':');
+  const [ehRaw, emRaw] = workEnd.split(':');
+  const sh = Number(shRaw ?? 0);
+  const sm = Number(smRaw ?? 0);
+  const eh = Number(ehRaw ?? 0);
+  const em = Number(emRaw ?? 0);
+  const startMinutes = sh * 60 + sm;
+  const endMinutes   = eh * 60 + em;
+  const workingMinutes = Math.max(0, endMinutes - startMinutes);
+  const workingHours   = workingMinutes / 60;
+
+  return {
+    operationDate: row.operation_date,
+    trucksPerHour: Number(row.planned_trucks_per_hour) || 0, // legacy
+    workingHours,
+    workStart,
+    workEnd,
+    targetVolume: Number(row.target_concrete_volume) || 0,
+    hourlyPlan,
+    plannedTripsTotal,
+  };
 }
 
-if (isVercel) {
-  setImmediate(() => { void runStartup(); });
-} else {
-  void runStartup();
-}
 
 // ===== PAGE ROUTES =====
 
@@ -270,9 +463,6 @@ app.get('/api/routes', (req: any, res: any) => {
       .map(([routeIdStr, feature]: [string, any]) => {
         const routeId = Number(routeIdStr);
         const tdas = corridors[routeId];
-        const pathIds: string[] = [];
-        if (PROJECT_PATHS.GAMMON_TM.includes(routeId)) pathIds.push('GAMMON_TM');
-        if (PROJECT_PATHS.HKC_TY.includes(routeId)) pathIds.push('HKC_TY');
         return {
           type: 'Feature',
           properties: {
@@ -282,7 +472,6 @@ app.get('/api/routes', (req: any, res: any) => {
             TRAFFICSPEED: tdas ? tdas.speed : null,
             HASTDASDATA: !!tdas,
             ISPROJECT: PROJECT_ROUTE_IDS.includes(routeId),
-            PATH_IDS: pathIds,
           },
           geometry: feature.geometry
         };
@@ -308,8 +497,31 @@ app.get('/api/routes', (req: any, res: any) => {
 app.get('/api/delivery-targets', async (req: any, res: any) => {
   try {
     const { date } = req.query;
-    const targets = await getDeliveryTargets((date as string) || undefined);
-    res.json({ ok: true, targets });
+
+    const sql = `
+      with params as (
+        select
+          $1::date as hk_date
+      )
+      select
+        operation_date,
+        target_concrete_volume,
+        work_start_hour,
+        work_end_hour,
+        planned_trucks_per_hour
+      from public.delivery_targets
+      cross join params
+      where (
+        -- if hk_date is null => no filtering (show all)
+        params.hk_date is null
+        or operation_date = params.hk_date
+      )
+      order by operation_date asc
+      limit 365;
+    `;
+
+    const result = await query(sql, [date || null]);
+    res.json({ ok: true, targets: result.rows });
   } catch (err: any) {
     console.error('Error in /api/delivery-targets:', err);
     res.status(500).json({ ok: false, error: String(err) });
@@ -322,15 +534,14 @@ app.get('/api/delivery-targets', async (req: any, res: any) => {
 
 app.get('/api/traffic', (req: any, res: any) => {
   try {
-    const stateMap: Record<number, { state: string; speed: number | null }> = {};
+    const stateMap: any = {};
     const filtered = getFilteredCorridors();
 
     for (const routeIdStr of Object.keys(filtered)) {
       const routeId = Number(routeIdStr);
       const tdas = corridors[routeId];
-      stateMap[routeId] = tdas
-        ? { state: tdas.state, speed: tdas.speed }
-        : { state: 'NO_DATA', speed: null };
+      if (!tdas) continue;
+      stateMap[routeId] = { state: tdas.state, speed: tdas.speed };
     }
 
     res.json({
@@ -340,74 +551,6 @@ app.get('/api/traffic', (req: any, res: any) => {
     });
   } catch (error) {
     console.error('Error in /api/traffic:', error);
-    res.status(500).json({ error: String(error) });
-  }
-});
-
-// ===== API: ROUTE ETA (estimated travel time per path to site) =====
-// Per-segment time sum: travelTime = sum(segDist_km / speed_kmh) so each segment's TDAS speed affects ETA.
-
-app.get('/api/route-eta', (req: any, res: any) => {
-  try {
-    const pathGeometries = buildPathGeometries();
-    const allCorridors = getAllCorridors();
-    const speedCapKmh = CONFIG.SPEED_CAP_KMH;
-    const noDataSpeedKmh = CONFIG.DEFAULT_SPEED_NO_DATA_KMH;
-    const result: Record<string, {
-      distanceKm: number;
-      travelTimeMinutes: number;
-      speedKmh: number;
-      startPosition?: { lng: number; lat: number };
-      label?: string;
-    }> = {};
-
-    const pathLabels: Record<string, string> = {
-      GAMMON_TM: 'Gammon Tuen Mun Plant',
-      HKC_TY: 'HKC Tsing Yi Plant',
-    };
-
-    /** HKC TY plant start (correct coordinates). [lng, lat] */
-    const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
-
-    for (const pathId of ['GAMMON_TM', 'HKC_TY'] as PathId[]) {
-      const path = pathGeometries[pathId];
-      if (!path || !path.coordinates || path.coordinates.length < 2) {
-        continue;
-      }
-      const first = pathId === 'HKC_TY' ? HKC_TY_START : (path.coordinates[0] as [number, number]);
-      const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
-      const routeIds = PROJECT_PATHS[pathId] || [];
-
-      // Sum segment travel times: time_h = segDist_km / speed_kmh per segment (TDAS changes per segment affect ETA)
-      let totalTimeHours = 0;
-      let totalDistance = 0;
-      for (const routeId of routeIds) {
-        const corridor = allCorridors[routeId] as { geometry?: { type: string; coordinates: number[][] } } | undefined;
-        if (!corridor?.geometry) continue;
-        const segDist = calculateRouteDistance(corridor.geometry);
-        if (segDist <= 0) continue;
-        const tdas = corridors[routeId];
-        const rawSpeed = tdas?.speed;
-        const speedKmh =
-          typeof rawSpeed === 'number' && rawSpeed > 0
-            ? Math.min(rawSpeed, speedCapKmh)
-            : Math.min(noDataSpeedKmh, speedCapKmh);
-        totalTimeHours += segDist / speedKmh;
-        totalDistance += segDist;
-      }
-      const travelTimeMinutes = Math.round(totalTimeHours * 60);
-      const speedKmh = totalTimeHours > 0 ? totalDistance / totalTimeHours : Math.min(noDataSpeedKmh, speedCapKmh);
-      result[pathId] = {
-        distanceKm,
-        travelTimeMinutes,
-        speedKmh,
-        ...(first ? { startPosition: { lng: first[0], lat: first[1] } } : {}),
-        ...(pathLabels[pathId] ? { label: pathLabels[pathId] } : {}),
-      };
-    }
-    res.json(result);
-  } catch (error) {
-    console.error('Error in /api/route-eta:', error);
     res.status(500).json({ error: String(error) });
   }
 });
@@ -484,7 +627,12 @@ app.post('/api/delivery/start', (req: any, res: any) => {
     const trucksPerHour = req.body.trucksPerHour || 12;
     const defaultSpeed = req.body.defaultSpeed || 40;
 
-    const pathGeometries = buildPathGeometries();
+    // For now, always stitch all known paths; later you can choose per request
+    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
+      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
+      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
+      REDLAND: stitchPath(PROJECT_PATHS.REDLAND),
+    };
 
     const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
     if (!base || base.coordinates.length === 0) {
@@ -530,248 +678,6 @@ app.post('/api/delivery/reset', (req: any, res: any) => {
   }
 });
 
-// ===== API: CLICKUP (lists/tasks → simulation) =====
-
-function requireClickUp(res: any): boolean {
-  if (!isClickUpConfigured()) {
-    res.status(503).json({ error: 'ClickUp not configured', hint: 'Set CLICKUP_API_TOKEN' });
-    return false;
-  }
-  return true;
-}
-
-// Check if ClickUp env is visible at runtime (for debugging Vercel env vars)
-app.get('/api/clickup/status', (req: any, res: any) => {
-  res.json({
-    configured: isClickUpConfigured(),
-    hint: isClickUpConfigured()
-      ? 'CLICKUP_API_TOKEN is set'
-      : 'Set CLICKUP_API_TOKEN in Vercel → Settings → Environment Variables (Production + Preview), then redeploy.',
-  });
-});
-
-// Debug: which space is used, folder count, list count (to fix "lists empty" = wrong space or no folders)
-app.get('/api/clickup/debug', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const spaceId = (req.query.spaceId as string) || CU_SPACE_ID;
-    const folders = await fetchFoldersForSpace(spaceId);
-    const firstFolder = folders[0];
-    let listCount = 0;
-    let listPreview: string[] = [];
-    let listSource: string;
-    if (firstFolder) {
-      const lists = await fetchListsForFolder(firstFolder.id);
-      listCount = lists.length;
-      listPreview = lists.slice(0, 5).map((l: any) => l.name || l.id);
-      listSource = 'first folder';
-    } else {
-      const lists = await fetchFolderlessListsForSpace(spaceId);
-      listCount = lists.length;
-      listPreview = lists.slice(0, 5).map((l: any) => l.name || l.id);
-      listSource = 'folderless (space has no folders)';
-    }
-    res.json({
-      spaceId,
-      source: process.env.CLICKUP_SPACE_ID ? 'CLICKUP_SPACE_ID (env)' : 'default (clickupConfig)',
-      folderCount: folders.length,
-      folders: folders.map((f: any) => ({ id: f.id, name: f.name })),
-      listCount,
-      listPreview,
-      listSource,
-      hint: listCount === 0
-        ? 'No lists in this space (and no folders). Check space ID and API access.'
-        : 'OK',
-    });
-  } catch (e: any) {
-    console.error('ClickUp debug error', e);
-    res.status(500).json({ error: e.message || 'Failed' });
-  }
-});
-
-app.get('/api/clickup/folders', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const spaceId = req.query.spaceId || CU_SPACE_ID;
-    const folders = await fetchFoldersForSpace(spaceId);
-    res.json({ folders });
-  } catch (e: any) {
-    console.error('ClickUp folders error', e);
-    res.status(500).json({ error: e.message || 'Failed to fetch folders' });
-  }
-});
-
-app.get('/api/clickup/lists', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const folderId = req.query.folderId;
-    if (!folderId) {
-      return res.status(400).json({ error: 'folderId required' });
-    }
-    const lists = await fetchListsForFolder(folderId);
-    res.json({ lists });
-  } catch (e: any) {
-    console.error('ClickUp lists error', e);
-    res.status(500).json({ error: e.message || 'Failed to fetch lists' });
-  }
-});
-
-/** Lists from first folder in space + defaultListId (by today YYYYMMDD in name/content, or config fallback). */
-app.get('/api/clickup/lists-with-default', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const spaceId = (req.query.spaceId as string) || CU_SPACE_ID;
-    const { lists, defaultListId } = await fetchListsWithDefault(spaceId);
-    res.json({ lists, defaultListId });
-  } catch (e: any) {
-    console.error('ClickUp lists-with-default error', e);
-    res.status(500).json({ error: e.message || 'Failed to fetch lists' });
-  }
-});
-
-app.get('/api/clickup/tasks', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const listId = req.query.listId;
-    if (!listId) {
-      return res.status(400).json({ error: 'listId required' });
-    }
-    const trips = await fetchTripsFromList(listId);
-    res.json({ trips });
-  } catch (e: any) {
-    console.error('ClickUp tasks error', e);
-    res.status(500).json({ error: e.message || 'Failed to fetch tasks' });
-  }
-});
-
-/** List summary for Concrete Delivery Overview: planned/actual by period, progress %, shortfall. Call to verify we can get list data before Start from ClickUp. */
-app.get('/api/clickup/list-summary', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const listId = req.query.listId as string;
-    if (!listId) {
-      return res.status(400).json({ ok: false, error: 'listId required' });
-    }
-    const summary = await getListSummary(listId);
-    res.json(summary);
-  } catch (e: any) {
-    console.error('ClickUp list-summary error', e);
-    res.status(500).json({ ok: false, error: e.message || 'Failed to fetch list summary' });
-  }
-});
-
-/** Start delivery session and hydrate trucks from a ClickUp list. Only tasks with Actual Departure set and status in_progress are shown on the map. */
-app.post('/api/delivery/start-from-clickup', async (req: any, res: any) => {
-  try {
-    if (!requireClickUp(res)) return;
-    const listId = req.body.listId;
-    if (!listId) {
-      return res.status(400).json({ error: 'listId required' });
-    }
-    const defaultSpeed = req.body.defaultSpeed ?? CONFIG.DEFAULT_SPEED_NO_DATA_KMH;
-
-    const pathGeometries = buildPathGeometries();
-    const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
-    if (!base || base.coordinates.length === 0) {
-      return res.status(400).json({ error: 'No path geometry found' });
-    }
-
-    const result = startDeliverySession(
-      {
-        routeId: 0,
-        targetVolume: req.body.targetVolume ?? 600,
-        volumePerTruck: req.body.volumePerTruck ?? 8,
-        trucksPerHour: req.body.trucksPerHour ?? 12,
-        startTime: new Date(),
-        defaultSpeed,
-      },
-      pathGeometries,
-    );
-
-    const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-    // Simulation: ON THE WAY trips get a truck; use Actual Departure or failing that Planned (Time Period) start
-    const inProgressWithStart = trips.filter(
-      (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
-    );
-    await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
-
-    res.json({
-      ...result,
-      message: 'Delivery started from ClickUp list',
-      tripCount: trips.length,
-      inProgressCount: inProgressWithStart.length,
-      hint: inProgressWithStart.length === 0 && trips.some((t) => t.status === 'in_progress')
-        ? 'No trucks on map: set Actual Departure Time or Time Period for "ON THE WAY" tasks.'
-        : undefined,
-    });
-  } catch (e: any) {
-    console.error('Start from ClickUp error', e);
-    res.status(500).json({ error: e.message || 'Failed to start from ClickUp' });
-  }
-});
-
-// Delivery status (simulation + trucks) - used by frontend for truck markers
-// When listId is provided: re-hydrate if running; if not running (e.g. new serverless instance), start session and hydrate so trucks are returned
-app.get('/api/delivery/status', async (req: any, res: any) => {
-  try {
-    const listId = (req.query?.listId || '').trim();
-    const defaultSpeed = 50;
-    if (listId && isClickUpConfigured()) {
-      if (!isDeliveryRunning()) {
-        try {
-          const pathGeometries = buildPathGeometries();
-          const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
-          if (base && base.coordinates.length > 0) {
-            startDeliverySession(
-              { routeId: 0, targetVolume: 600, volumePerTruck: 8, trucksPerHour: 12, startTime: new Date(), defaultSpeed },
-              pathGeometries,
-            );
-            const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-            const inProgressWithStart = trips.filter(
-              (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
-            );
-            await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
-          }
-        } catch (e) {
-          console.warn('Status: start and hydrate from ClickUp:', e);
-        }
-      } else {
-        tickDelivery(1);
-        try {
-          const trips: ClickUpTrip[] = await fetchTripsFromList(listId);
-          const inProgressWithStart = trips.filter(
-            (t) => t.status === 'in_progress' && (t.actual_start_at || t.planned_start_at)
-          );
-          if (inProgressWithStart.length > 0) {
-            await hydrateFromTrips(inProgressWithStart as import('./services/truckService').DbTrip[], defaultSpeed);
-          }
-        } catch (e) {
-          console.warn('Re-hydrate trucks from ClickUp:', e);
-        }
-      }
-    } else if (isDeliveryRunning()) {
-      tickDelivery(1);
-    }
-    const status = getDeliveryStatus();
-    const running = isDeliveryRunning();
-    if (!status) {
-      return res.json({ running: false, trucks: [] });
-    }
-    res.json({
-      running,
-      trucks: status.trucks,
-      config: status.config,
-      progress: status.progress,
-      throughput: status.throughput,
-      deliveryLog: status.deliveryLog,
-      timestamp: status.timestamp,
-    });
-  } catch (error) {
-    console.error('Error in /api/delivery/status:', error);
-    res.status(500).json({ error: String(error) });
-  }
-});
-
 // ===== API: TRUCKS =====
 
 app.get('/api/trucks/:routeId', (req, res) => {
@@ -807,17 +713,32 @@ app.post('/api/trips/start', async (req: any, res: any) => {
     }
 
     const startTime = actualStartAt ? new Date(actualStartAt) : new Date();
+
+    // Only allow the two plants; default to Gammon if anything else
     const plant =
       concretePlant === 'HKC Tsing Yi Plant'
         ? 'HKC Tsing Yi Plant'
         : 'Gammon Tuen Mun Plant';
 
-    const trip = await insertTrip(
+    const sql = `
+      insert into public.trips (
+        vehicle_id,
+        actual_start_at,
+        concrete_plant,
+        status,
+        corrected
+      )
+      values ($1, $2, $3, 'in_progress', coalesce($4, false))
+      returning *
+    `;
+    const result = await query(sql, [
       vehicleId,
-      startTime,
+      startTime.toISOString(),
       plant,
-      corrected
-    );
+      corrected,
+    ]);
+    const trip = result.rows[0];
+
     res.status(201).json({ ok: true, trip });
   } catch (err: any) {
     console.error('Error in /api/trips/start', err);
@@ -829,7 +750,7 @@ app.post('/api/trips/start', async (req: any, res: any) => {
 // ===== API: SIMPLE DELIVERY STATUS (trip-count based) =====
 app.get('/api/delivery/simple-status', async (req: any, res: any) => {
   try {
-    const plan = await getTodayTruckPlan();
+    const plan = await loadTodayTruckPlan();
     if (!plan) {
       return res.json({
         ok: true,
@@ -839,17 +760,23 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
     }
 
     // 1) Fetch today’s trips (HK time)
-    const displayStartHour = 7;
-    const displayEndHour = 24;
+    const tripsSql = `
+      select
+        id,
+        vehicle_id,
+        actual_start_at,
+        actual_arrival_at,
+        status
+      from public.trips
+      where (actual_start_at at time zone 'Asia/Hong_Kong')::date =
+            (now() at time zone 'Asia/Hong_Kong')::date
+    `;
+    const tripsResult = await query(tripsSql);
+    const trips = tripsResult.rows;
 
-    const [allTrips, completedWithHours, nowHour] = await Promise.all([
-      getTodayTrips(),
-      getTodayCompletedTripsWithArrivalHour(displayStartHour, displayEndHour),
-      getCurrentHKHour(),
-    ]);
-
-    const completedTrips = allTrips.filter((t) => t.status === 'completed');
-    const inProgressTrips = allTrips.filter((t) => t.status === 'in_progress');
+    // 2) Count completed + in_progress
+    const completedTrips = trips.filter((t: any) => t.status === 'completed');
+    const inProgressTrips = trips.filter((t: any) => t.status === 'in_progress');
 
     // 3) Planned totals based on per-hour plan from DB
     const plannedTripsTotal = plan.plannedTripsTotal;
@@ -862,17 +789,46 @@ app.get('/api/delivery/simple-status', async (req: any, res: any) => {
         : 0;
 
 
-    type HourBucket = { hour: number; planned: number; actual: number };
-    const buckets: Record<number, HourBucket> = {};
+    // 5 Build per-hour planned / actual HK time with display window 7–24
+      type HourBucket = { hour: number; planned: number; actual: number };
+      const buckets: Record<number, HourBucket> = {};
+
+      const displayStartHour = 7;
+      const displayEndHour = 24;
+
+    // 5a: pre-fill planned counts from hourlyPlan for 7..23
     for (let h = displayStartHour; h < displayEndHour; h++) {
-      buckets[h] = { hour: h, planned: plan.hourlyPlan[h] ?? 0, actual: 0 };
-    }
-    for (const t of completedWithHours) {
-      const bucket = buckets[t.arrival_hour];
-      if (bucket) bucket.actual += 1;
+      const planned = plan.hourlyPlan[h] ?? 0;
+      buckets[h] = { hour: h, planned, actual: 0 };
     }
 
-    const hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
+    // 6 Fill actual completed trips per hour (HK time)
+    for (const t of completedTrips) {
+      if (!t.actual_arrival_at) continue;
+
+      const hkHourSql = `
+        select extract(hour from $1::timestamptz at time zone 'Asia/Hong_Kong') as h
+      `;
+      const r = await query(hkHourSql, [t.actual_arrival_at]);
+      const h = Number(r.rows[0].h);
+
+      if (h < displayStartHour || h >= displayEndHour) continue;
+
+      const bucket = buckets[h];
+      if (!bucket) continue;             // satisfies TS
+
+      bucket.actual += 1;
+    }
+
+
+
+    // 7 Build sorted timeline and compute cumulative shortfall up to "now"
+    let hourlyTimeline = Object.values(buckets).sort((a, b) => a.hour - b.hour);
+
+    // current HK hour (integer)
+    const nowHkSql = `select extract(hour from now() at time zone 'Asia/Hong_Kong') as h`;
+    const nowRes = await query(nowHkSql);
+    const nowHour = Number(nowRes.rows[0].h);
 
     let totalPlannedSoFar = 0;
     let totalActualSoFar = 0;
@@ -926,11 +882,25 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
     }
 
     const arrivalTime = actualArrivalAt ? new Date(actualArrivalAt) : new Date();
-    const trip = await completeTrip(tripId, arrivalTime, corrected);
 
-    if (!trip) {
+    const sql = `
+      update public.trips
+      set actual_arrival_at = $1,
+          status = 'completed',
+          corrected = coalesce($2, corrected),
+          updated_at = now()
+      where id = $3
+      returning *
+    `;
+    const result = await query(sql, [arrivalTime.toISOString(), corrected, tripId]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ ok: false, error: 'Trip not found' });
     }
+
+    const trip = result.rows[0];
+
+    // Trip Admin → DB only; sim will drop this on next sync
     res.json({ ok: true, trip });
   } catch (err: any) {
     console.error('Error in /api/trips/:id/arrive', err);
@@ -943,12 +913,44 @@ app.post('/api/trips/:id/arrive', async (req: any, res: any) => {
 app.get('/api/trips/today', async (req: any, res: any) => {
   try {
     const { date, hourFrom, hourTo } = req.query;
-    const trips = await getTodayTrips(
-      (date as string) || undefined,
-      hourFrom ?? undefined,
-      hourTo ?? undefined
-    );
-    res.json({ ok: true, trips });
+
+    const sql = `
+      with params as (
+        select
+          coalesce(
+            $1::date,
+            (now() at time zone 'Asia/Hong_Kong')::date
+          ) as hk_date,
+          $2::int as hour_from,
+          $3::int as hour_to
+      )
+      select t.*
+      from public.trips t
+      cross join params
+      where
+        -- Hong Kong local date of actual_start_at must match selected date
+        (t.actual_start_at at time zone 'Asia/Hong_Kong')::date = params.hk_date
+        -- Optional lower bound on hour
+        and (
+          params.hour_from is null
+          or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) >= params.hour_from
+        )
+        -- Optional upper bound on hour (exclusive)
+        and (
+          params.hour_to is null
+          or extract(hour from (t.actual_start_at at time zone 'Asia/Hong_Kong')) < params.hour_to
+        )
+      order by t.actual_start_at asc
+      limit 200;
+    `;
+
+    const result = await query(sql, [
+      date || null,          // $1: 'YYYY-MM-DD' or null
+      hourFrom ?? null,      // $2: '0'..'23' or null
+      hourTo ?? null         // $3: '1'..'24' or null
+    ]);
+
+    res.json({ ok: true, trips: result.rows });
   } catch (err: any) {
     console.error('Error in /api/trips/today:', err);
     res.status(500).json({ ok: false, error: String(err) });
