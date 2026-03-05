@@ -13,6 +13,7 @@ function segDist(a: number[], b: number[]): number {
 const GAMMON_START: [number, number] = [113.99065, 22.41476];
 /** HKC Tsing Yi plant [lng, lat] – used as stitch start for HKC_TY path so segment order is plant → site */
 const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
+const REDLAND_START: [number, number] = [126.81315, 25.59399];
 
 /**
  * Stitch corridor segments into a continuous path ordered by proximity.
@@ -112,6 +113,6 @@ export function buildPathGeometries(): Record<PathId, StitchedPath> {
   return {
     GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM, GAMMON_START),
     HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY, HKC_TY_START),
-    FUTURE_PATH: stitchPath(PROJECT_PATHS.FUTURE_PATH),
+    REDLAND : stitchPath(PROJECT_PATHS.REDLAND, REDLAND_START),
   };
 }

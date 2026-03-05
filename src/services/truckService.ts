@@ -501,7 +501,7 @@ function ensureConfigForDb(): void {
       pathGeometries: {
         GAMMON_TM: { coordinates: dummyCoords, segmentCount: dummyCoords.length },
         HKC_TY: null,
-        FUTURE_PATH: null,
+        REDLAND : null,
       },
     };
     isRunning = true;
