@@ -4,7 +4,11 @@
 export type RouteId = number;
 
 // 3) Path IDs – easy to extend with a third route later
-export type PathId = "GAMMON_TM" | "HKC_TY" | "REDLAND";
+export type PathId =
+  | "GAMMON_TM"
+  | "HKC_TY"
+  | "REDLAND"
+  | "GOLIK";
 
 // 4) Ordered paths per plant (or depot)
 // Gammon Tuen Mun → Site
@@ -53,12 +57,29 @@ export const REDLAND_PATH: RouteId[] = [
   111986, 111322, 122796, 122797, 165821, 260443, 165819, 285509, 285514,
 ];
 
+// GOLIK → Site
+export const GOLIK_PATH: RouteId[] = [
+  95456, 95367, 97143, 95449, 95439, 95547, 95890, 95891, 95462, 95874,
+  97253, 96235, 96248, 97349, 96247, 97352, 97353, 271732, 95759, 96006,
+  95563, 97171, 95920, 95571, 95562, 95415, 97140, 97141, 95997, 95441,
+  110855, 95972, 95981, 96756, 95983, 95987, 96763, 95985, 279712, 95977,
+  96782, 111898, 98048, 96220, 96784, 93848,
+  // shared tail:
+  260731, 96883, 96913, 97271, 96793, 94129, 96791, 96885, 93855, 96800,
+  279744, 96932, 96803, 93853, 96926, 96808, 96927, 93231, 93153, 93151,
+  96842, 93148, 96860, 93147, 93171, 93166, 110565, 110564, 111985, 165814,
+  111986, 111322, 122796, 122797, 165821, 260443, 165819, 285509, 285514,
+];
+
+
 // 5) Map of all paths (so you can iterate over them or index by PathId)
 export const PROJECT_PATHS: Record<PathId, RouteId[]> = {
   GAMMON_TM: GAMMON_TM_PATH,
   HKC_TY: HKC_TY_PATH,
   REDLAND: REDLAND_PATH,
+  GOLIK: GOLIK_PATH,
 };
+
 
 // 2) All project route IDs (union of all paths, used for TDAS/filtering)
 export const PROJECT_ROUTE_IDS: RouteId[] = Array.from(
@@ -66,5 +87,6 @@ export const PROJECT_ROUTE_IDS: RouteId[] = Array.from(
     ...GAMMON_TM_PATH,
     ...HKC_TY_PATH,
     ...REDLAND_PATH,
+    ...GOLIK_PATH,
   ]),
 );
