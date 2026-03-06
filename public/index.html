@@ -74,7 +74,9 @@
                     <h3 class="eta-travel-title"><span class="eta-title-icon">🛣️</span> Estimated Travel Time of Routes</h3>
                     <div class="eta-travel-rows">
                       <div class="eta-travel-row" data-path-id="GAMMON_TM" data-route-num="1">
-                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('GAMMON_TM', event)" title="Show/hide route">👁</span>
+                        <label class="route-visibility-cb">
+                          <input type="checkbox" checked class="route-visibility-input" data-path-id="GAMMON_TM" onchange="toggleRouteVisibilityFromCheckbox('GAMMON_TM')" title="Show/hide route on map">
+                        </label>
                         <span class="eta-row-badge">1</span>
                         <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('GAMMON_TM')" title="Zoom and highlight route">Gammon TM Plant → Site</span>
                         <span class="eta-travel-right">
@@ -83,7 +85,9 @@
                         </span>
                       </div>
                       <div class="eta-travel-row" data-path-id="HKC_TY" data-route-num="2">
-                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('HKC_TY', event)" title="Show/hide route">👁</span>
+                        <label class="route-visibility-cb">
+                          <input type="checkbox" checked class="route-visibility-input" data-path-id="HKC_TY" onchange="toggleRouteVisibilityFromCheckbox('HKC_TY')" title="Show/hide route on map">
+                        </label>
                         <span class="eta-row-badge">2</span>
                         <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('HKC_TY')" title="Zoom and highlight route">HKC TY Plant → Site</span>
                         <span class="eta-travel-right">
@@ -92,7 +96,9 @@
                         </span>
                       </div>
                       <div class="eta-travel-row" data-path-id="REDLAND" data-route-num="3">
-                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('REDLAND', event)" title="Show/hide route">👁</span>
+                        <label class="route-visibility-cb">
+                          <input type="checkbox" checked class="route-visibility-input" data-path-id="REDLAND" onchange="toggleRouteVisibilityFromCheckbox('REDLAND')" title="Show/hide route on map">
+                        </label>
                         <span class="eta-row-badge">3</span>
                         <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('REDLAND')" title="Zoom and highlight route">Redland → Site</span>
                         <span class="eta-travel-right">
@@ -101,7 +107,9 @@
                         </span>
                       </div>
                       <div class="eta-travel-row" data-path-id="GOLIK_MAIN" data-route-num="4">
-                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('GOLIK_MAIN', event)" title="Show/hide route">👁</span>
+                        <label class="route-visibility-cb">
+                          <input type="checkbox" checked class="route-visibility-input" data-path-id="GOLIK_MAIN" onchange="toggleRouteVisibilityFromCheckbox('GOLIK_MAIN')" title="Show/hide route on map">
+                        </label>
                         <span class="eta-row-badge">4</span>
                         <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('GOLIK_MAIN')" title="Zoom and highlight route">GOLIK Main → Site</span>
                         <span class="eta-travel-right">
@@ -110,7 +118,9 @@
                         </span>
                       </div>
                       <div class="eta-travel-row" data-path-id="ROUTE_5" data-route-num="5">
-                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('ROUTE_5', event)" title="Show/hide route">👁</span>
+                        <label class="route-visibility-cb">
+                          <input type="checkbox" checked class="route-visibility-input" data-path-id="ROUTE_5" onchange="toggleRouteVisibilityFromCheckbox('ROUTE_5')" title="Show/hide route on map">
+                        </label>
                         <span class="eta-row-badge">5</span>
                         <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('ROUTE_5')" title="Zoom and highlight route">GOLIK Alternative → Site</span>
                         <span class="eta-travel-right">
@@ -305,13 +315,10 @@
       }
 
 
-      function toggleRouteVisibility(pathId, ev) {
-        if (ev) ev.stopPropagation();
-        routeVisibility[pathId] = !routeVisibility[pathId];
+      function toggleRouteVisibilityFromCheckbox(pathId) {
+        const cb = document.querySelector('.route-visibility-input[data-path-id="' + pathId + '"]');
+        routeVisibility[pathId] = cb ? cb.checked : true;
         const row = document.querySelector('.eta-travel-row[data-path-id="' + pathId + '"]');
-        const eye = row ? row.querySelector('.route-visibility-toggle') : null;
-        if (eye) eye.textContent = routeVisibility[pathId] ? '👁' : '🙈';
-        if (eye) eye.title = routeVisibility[pathId] ? 'Hide route' : 'Show route';
         if (row) row.classList.toggle('route-hidden', !routeVisibility[pathId]);
         redrawRoutesOnMap();
       }
@@ -508,15 +515,11 @@
             const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
             const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
 
-            let color, weight, opacity;
+            const color = getColorForState(state, isProject, hasTdas);
+            let weight = isProject ? 5 : 2;
+            const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
             if (isHighlighted) {
-              color = '#fbbf24';
               weight = 8;
-              opacity = 1;
-            } else {
-              color = getColorForState(state, isProject, hasTdas);
-              weight = isProject ? 5 : 2;
-              opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
             }
 
             let allCoords = [];

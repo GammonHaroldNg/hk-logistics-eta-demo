@@ -329,16 +329,21 @@ main {
   opacity: 0.5;
 }
 
-.eta-travel-row .route-visibility-toggle {
-  cursor: pointer;
-  font-size: 16px;
-  padding: 2px 4px;
-  user-select: none;
+.route-visibility-cb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
+  margin: 0;
 }
 
-.eta-travel-row .route-visibility-toggle:hover {
-  opacity: 0.9;
+.route-visibility-input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #3b82f6;
 }
 
 .eta-travel-label.clickable {
