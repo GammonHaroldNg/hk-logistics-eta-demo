@@ -35,6 +35,12 @@ main {
   -webkit-overflow-scrolling: touch;
 }
 
+/* When using a single outer scroll, don't create an inner scroll for the route list */
+.stats-panel-scroll .route-list-container {
+  overflow: visible;
+  flex: none;
+}
+
 .stats-panel h2 {
   font-size: 18px;
   margin-bottom: 16px;

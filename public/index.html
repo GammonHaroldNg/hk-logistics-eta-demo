@@ -413,7 +413,8 @@
         currentPanel = 'status';
         document.getElementById('projectPanel').style.display = 'none';
         const overviewPanel = document.getElementById('overviewPanel');
-        overviewPanel.style.display = 'flex';  // keep flex so panel-scroll gets height and route list is visible
+        // Use normal document flow so the route list stays below the ETA card.
+        overviewPanel.style.display = 'block';
       }
 
       function showTrackingMode() {
