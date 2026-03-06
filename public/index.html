@@ -321,6 +321,7 @@
         const row = document.querySelector('.eta-travel-row[data-path-id="' + pathId + '"]');
         if (row) row.classList.toggle('route-hidden', !routeVisibility[pathId]);
         redrawRoutesOnMap();
+        updateProjectMarkers();
       }
 
       function selectAndZoomToPath(pathId) {
@@ -517,9 +518,12 @@
 
             const color = getColorForState(state, isProject, hasTdas);
             let weight = isProject ? 5 : 2;
-            const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
+            let opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
             if (isHighlighted) {
               weight = 8;
+              opacity = 1;
+            } else if (selectedPathId) {
+              opacity = 0.25;
             }
 
             let allCoords = [];
@@ -678,6 +682,46 @@
         window.location.href = `/tracking?route=${routeId}`;
       }
 
+      function startIcon(num) {
+        return L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">' + num + '</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+      }
+
+      function updateProjectMarkers() {
+        if (!map) return;
+        if (!projectMarkers) {
+          projectMarkers = L.featureGroup().addTo(map);
+        }
+        projectMarkers.clearLayers();
+
+        const endPoint = [22.51755036, 114.0741744];
+        const pathOrder = ['GAMMON_TM', 'HKC_TY', 'REDLAND', 'GOLIK_MAIN', 'ROUTE_5'];
+        pathOrder.forEach((pathId, idx) => {
+          if (routeVisibility[pathId] === false) return;
+          const start = pathStarts[pathId];
+          if (!start || start.lat == null || start.lng == null) return;
+          const pt = [start.lat, start.lng];
+          const num = idx + 1;
+          L.marker(pt, { icon: startIcon(num) })
+            .bindTooltip(start.label || pathId, { permanent: true, direction: 'bottom', className: 'factory-label-tooltip', offset: [0, 14] })
+            .addTo(projectMarkers);
+        });
+
+        const endIcon = L.divIcon({
+          className: 'custom-marker',
+          html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">E</div>',
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
+        });
+        L.marker(endPoint, { icon: endIcon })
+          .bindPopup('<b>🏗️ End Point</b><br>Construction Site<br>Coordinates: 22.51755, 114.07417')
+          .addTo(projectMarkers);
+      }
+
       function zoomToProjectRoutes() {
         if (!map || !allRoutes) return;
 
@@ -686,18 +730,11 @@
         );
         if (!projectFeatures.length) return;
 
-        // Clear existing markers
-        if (projectMarkers) {
-          projectMarkers.clearLayers();
-        } else {
-          projectMarkers = L.featureGroup().addTo(map);
-        }
+        updateProjectMarkers();
 
-        const endPoint = [22.51755036, 114.0741744];     // [lat, lng] – site
-
+        const endPoint = [22.51755036, 114.0741744];
         const bounds = L.latLngBounds([]);
 
-        // Collect bounds from project routes
         projectFeatures.forEach(f => {
           let allCoords = [];
           if (f.geometry.type === 'LineString') {
@@ -713,41 +750,14 @@
         });
 
         bounds.extend(endPoint);
-
-        // Start marker icon: number in circle (1–5 = routes)
-        function startIcon(num) {
-          return L.divIcon({
-            className: 'custom-marker',
-            html: '<div style="background-color: #22c55e; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">' + num + '</div>',
-            iconSize: [28, 28],
-            iconAnchor: [14, 14]
-          });
-        }
-
         const pathOrder = ['GAMMON_TM', 'HKC_TY', 'REDLAND', 'GOLIK_MAIN', 'ROUTE_5'];
         pathOrder.forEach((pathId, idx) => {
+          if (routeVisibility[pathId] === false) return;
           const start = pathStarts[pathId];
           if (!start || start.lat == null || start.lng == null) return;
-          const pt = [start.lat, start.lng];
-          bounds.extend(pt);
-          const num = idx + 1;
-          L.marker(pt, { icon: startIcon(num) })
-            .bindTooltip(start.label || pathId, { permanent: true, direction: 'bottom', className: 'factory-label-tooltip', offset: [0, 14] })
-            .addTo(projectMarkers);
+          bounds.extend([start.lat, start.lng]);
         });
 
-        // End marker (red "E")
-        const endIcon = L.divIcon({
-          className: 'custom-marker',
-          html: '<div style="background-color: #ef4444; width: 28px; height: 28px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; font-size: 14px;">E</div>',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14]
-        });
-        L.marker(endPoint, { icon: endIcon })
-          .bindPopup('<b>🏗️ End Point</b><br>Construction Site<br>Coordinates: 22.51755, 114.07417')
-          .addTo(projectMarkers);
-
-        // Zoom to show all project routes and markers
         if (bounds.isValid()) {
           map.fitBounds(bounds, { padding: [60, 60] });
         }
