@@ -95,6 +95,15 @@ export async function fetchTrafficSpeedMap(): Promise<Map<number, TrafficSegment
   }
 }
 
+/**
+ * Map average speed (km/h) to traffic status for display.
+ * Speed comes from HK TDAS (resource.data.one.gov.hk) – average speed per segment in km/h.
+ *
+ * Ranges (km/h):
+ *   RED:    speed < 30  (congested / slow)
+ *   YELLOW: 30 ≤ speed < 50  (moderate)
+ *   GREEN:  speed ≥ 50  (free flow)
+ */
 export function speedToState(speed: number): TrafficState {
   if (speed < 30) return 'RED';
   if (speed < 50) return 'YELLOW';
