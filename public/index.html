@@ -73,41 +73,46 @@
                   <div class="eta-travel-card" id="etaTravelCard">
                     <h3 class="eta-travel-title"><span class="eta-title-icon">🛣️</span> Estimated Travel Time of Routes</h3>
                     <div class="eta-travel-rows">
-                      <div class="eta-travel-row clickable" data-path-id="GAMMON_TM" data-route-num="1" onclick="zoomToPath('GAMMON_TM')" title="Zoom to route">
+                      <div class="eta-travel-row" data-path-id="GAMMON_TM" data-route-num="1">
+                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('GAMMON_TM', event)" title="Show/hide route">👁</span>
                         <span class="eta-row-badge">1</span>
-                        <span class="eta-travel-label">Gammon TM Plant → Site</span>
+                        <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('GAMMON_TM')" title="Zoom and highlight route">Gammon TM Plant → Site</span>
                         <span class="eta-travel-right">
                           <span class="eta-travel-value" id="etaGammonTm">—</span>
                           <span class="eta-travel-dist" id="etaGammonTmDist">—</span>
                         </span>
                       </div>
-                      <div class="eta-travel-row clickable" data-path-id="HKC_TY" data-route-num="2" onclick="zoomToPath('HKC_TY')" title="Zoom to route">
+                      <div class="eta-travel-row" data-path-id="HKC_TY" data-route-num="2">
+                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('HKC_TY', event)" title="Show/hide route">👁</span>
                         <span class="eta-row-badge">2</span>
-                        <span class="eta-travel-label">HKC TY Plant → Site</span>
+                        <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('HKC_TY')" title="Zoom and highlight route">HKC TY Plant → Site</span>
                         <span class="eta-travel-right">
                           <span class="eta-travel-value" id="etaHkcTy">—</span>
                           <span class="eta-travel-dist" id="etaHkcTyDist">—</span>
                         </span>
                       </div>
-                      <div class="eta-travel-row clickable" data-path-id="REDLAND" data-route-num="3" onclick="zoomToPath('REDLAND')" title="Zoom to route">
+                      <div class="eta-travel-row" data-path-id="REDLAND" data-route-num="3">
+                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('REDLAND', event)" title="Show/hide route">👁</span>
                         <span class="eta-row-badge">3</span>
-                        <span class="eta-travel-label">Redland → Site</span>
+                        <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('REDLAND')" title="Zoom and highlight route">Redland → Site</span>
                         <span class="eta-travel-right">
                           <span class="eta-travel-value" id="etaRedland">—</span>
                           <span class="eta-travel-dist" id="etaRedlandDist">—</span>
                         </span>
                       </div>
-                      <div class="eta-travel-row clickable" data-path-id="GOLIK_MAIN" data-route-num="4" onclick="zoomToPath('GOLIK_MAIN')" title="Zoom to route">
+                      <div class="eta-travel-row" data-path-id="GOLIK_MAIN" data-route-num="4">
+                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('GOLIK_MAIN', event)" title="Show/hide route">👁</span>
                         <span class="eta-row-badge">4</span>
-                        <span class="eta-travel-label">GOLIK Main → Site</span>
+                        <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('GOLIK_MAIN')" title="Zoom and highlight route">GOLIK Main → Site</span>
                         <span class="eta-travel-right">
                           <span class="eta-travel-value" id="etaGolikMain">—</span>
                           <span class="eta-travel-dist" id="etaGolikMainDist">—</span>
                         </span>
                       </div>
-                      <div class="eta-travel-row clickable" data-path-id="ROUTE_5" data-route-num="5" onclick="zoomToPath('ROUTE_5')" title="Zoom to route">
+                      <div class="eta-travel-row" data-path-id="ROUTE_5" data-route-num="5">
+                        <span class="route-visibility-toggle" onclick="toggleRouteVisibility('ROUTE_5', event)" title="Show/hide route">👁</span>
                         <span class="eta-row-badge">5</span>
-                        <span class="eta-travel-label">GOLIK Alternative → Site</span>
+                        <span class="eta-travel-label clickable" onclick="selectAndZoomToPath('ROUTE_5')" title="Zoom and highlight route">GOLIK Alternative → Site</span>
                         <span class="eta-travel-right">
                           <span class="eta-travel-value" id="etaRoute5">—</span>
                           <span class="eta-travel-dist" id="etaRoute5Dist">—</span>
@@ -184,6 +189,10 @@
       let activeFilters = new Set(['GREEN', 'YELLOW', 'RED']);
       let allProjectRoutes = [];
       let pathStarts = {};  // { GAMMON_TM: { lat, lng, label }, HKC_TY: { ... } }
+      // Per-route visibility (eye on/off). All true by default.
+      let routeVisibility = { GAMMON_TM: true, HKC_TY: true, REDLAND: true, GOLIK_MAIN: true, ROUTE_5: true };
+      let selectedPathId = null;  // pathId when user clicks a route button (highlight on map)
+      let initialZoomDone = false;
 
       function toggleFilter(filterType) {
         if (activeFilters.has(filterType)) {
@@ -296,14 +305,39 @@
       }
 
 
-      window.addEventListener('DOMContentLoaded', () => {
+      function toggleRouteVisibility(pathId, ev) {
+        if (ev) ev.stopPropagation();
+        routeVisibility[pathId] = !routeVisibility[pathId];
+        const row = document.querySelector('.eta-travel-row[data-path-id="' + pathId + '"]');
+        const eye = row ? row.querySelector('.route-visibility-toggle') : null;
+        if (eye) eye.textContent = routeVisibility[pathId] ? '👁' : '🙈';
+        if (eye) eye.title = routeVisibility[pathId] ? 'Hide route' : 'Show route';
+        if (row) row.classList.toggle('route-hidden', !routeVisibility[pathId]);
+        redrawRoutesOnMap();
+      }
+
+      function selectAndZoomToPath(pathId) {
+        selectedPathId = selectedPathId === pathId ? null : pathId;
+        document.querySelectorAll('.eta-travel-row').forEach(el => el.classList.remove('route-highlighted'));
+        const row = document.querySelector('.eta-travel-row[data-path-id="' + pathId + '"]');
+        if (row && selectedPathId) row.classList.add('route-highlighted');
+        zoomToPath(pathId);
+        redrawRoutesOnMap();
+      }
+
+      window.addEventListener('DOMContentLoaded', async () => {
         console.log('✓ Page loaded');
         console.log('API_BASE:', API_BASE);
 
         initMap();
         loadTrafficData();
-        loadAndDisplayRoutes();
-        loadRouteEta();
+        await loadAndDisplayRoutes();
+        await loadRouteEta();
+
+        if (!initialZoomDone && map && allRoutes.length > 0) {
+          zoomToProjectRoutes();
+          initialZoomDone = true;
+        }
 
         setTimeout(function () {
           if (currentPanel === 'project') renderDeliveryForm();
@@ -311,7 +345,6 @@
 
         setInterval(loadTrafficData, 60000);
 
-        // NEW: start delivery status polling so markers and panel stay in sync
         if (!deliveryInterval) {
           pollDeliveryStatus();
           deliveryInterval = setInterval(pollDeliveryStatus, 3000);
@@ -328,12 +361,12 @@
           showTrackingMode();
         };
 
-          const refreshBtn = document.getElementById('refreshRoutesBtn');
-          if (refreshBtn) {
-            refreshBtn.onclick = () => {
-              refreshData();
-            };
-          }
+        const refreshBtn = document.getElementById('refreshRoutesBtn');
+        if (refreshBtn) {
+          refreshBtn.onclick = () => {
+            refreshData();
+          };
+        }
       });
 
 
@@ -454,9 +487,7 @@
       function redrawRoutesOnMap() {
         if (!routeLayer || !allRoutes) return;
 
-        // Clear existing routes
         routeLayer.clearLayers();
-
         let routesAdded = 0;
 
         for (const feature of allRoutes) {
@@ -465,17 +496,28 @@
             if (feature.geometry.type !== 'LineString' &&
                 feature.geometry.type !== 'MultiLineString') continue;
 
+            const pathIds = feature.properties?.PATH_IDS || [];
+            const isVisible = pathIds.length === 0 || pathIds.some(pid => routeVisibility[pid] !== false);
+            if (!isVisible) continue;
+
             const routeId = feature.properties?.ROUTEID;
             const isProject = feature.properties?.ISPROJECT;
+            const isHighlighted = selectedPathId && pathIds.indexOf(selectedPathId) !== -1;
 
-            // Get TDAS from trafficDataMap (updated data)
             const trafficState = trafficDataMap[routeId];
             const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
             const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
 
-            const color = getColorForState(state, isProject, hasTdas);
-            const weight = isProject ? 5 : 2;
-            const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
+            let color, weight, opacity;
+            if (isHighlighted) {
+              color = '#fbbf24';
+              weight = 8;
+              opacity = 1;
+            } else {
+              color = getColorForState(state, isProject, hasTdas);
+              weight = isProject ? 5 : 2;
+              opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
+            }
 
             let allCoords = [];
             if (feature.geometry.type === 'LineString') {
@@ -487,21 +529,13 @@
             for (const coords of allCoords) {
               if (!coords || coords.length === 0) continue;
               const latLngs = coords.map(coord => [coord[1], coord[0]]);
-
-              L.polyline(latLngs, {
-                color,
-                weight,
-                opacity
-              }).addTo(routeLayer);
-
+              L.polyline(latLngs, { color, weight, opacity }).addTo(routeLayer);
               routesAdded++;
             }
           } catch (e) {
             console.warn('Error redrawing route:', e);
           }
         }
-
-        console.log('✓ Routes redrawn on map:', routesAdded, 'segments');
       }
 
 
@@ -535,73 +569,29 @@
 
           allRoutes = geoData.features;
 
-          if (routeLayer) routeLayer.clearLayers();
-
-          let routesAdded = 0;
           const projectRoutes = [];
-
           for (const feature of geoData.features) {
-            try {
-              if (!feature.geometry) continue;
-              if (feature.geometry.type !== 'LineString' &&
-                  feature.geometry.type !== 'MultiLineString') continue;
-
-              const routeId = feature.properties?.ROUTEID;
-              const isProject = feature.properties?.ISPROJECT;
-
-              // Get TDAS from trafficDataMap first, fallback to properties
-              const trafficState = trafficDataMap[routeId];
-              const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
-              const speed = trafficState?.speed ??
-                            (typeof feature.properties?.TRAFFICSPEED === 'number'
-                              ? feature.properties.TRAFFICSPEED
-                              : null);
-              const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
-
-              const color = getColorForState(state, isProject, hasTdas);
-              const weight = isProject ? 5 : 2;
-              const opacity = hasTdas ? (isProject ? 0.9 : 0.5) : 0.5;
-
-              let allCoords = [];
-              if (feature.geometry.type === 'LineString') {
-                allCoords = [feature.geometry.coordinates];
-              } else if (feature.geometry.type === 'MultiLineString') {
-                allCoords = feature.geometry.coordinates;
-              }
-
-              for (const coords of allCoords) {
-                if (!coords || coords.length === 0) continue;
-                const latLngs = coords.map(coord => [coord[1], coord[0]]);
-
-                L.polyline(latLngs, {
-                  color,
-                  weight,
-                  opacity
-                }).addTo(routeLayer);
-
-                routesAdded++;
-              }
-
-              if (isProject) {
-                projectRoutes.push({
-                  ...feature,
-                  properties: {
-                    ...feature.properties,
-                    TDASSTATE: state,
-                    TRAFFICSPEED: speed,
-                    HASTDASDATA: hasTdas
-                  }
-                });
-              }
-            } catch (e) {
-              console.warn('Error drawing route:', e);
+            const routeId = feature.properties?.ROUTEID;
+            const isProject = feature.properties?.ISPROJECT;
+            const trafficState = trafficDataMap[routeId];
+            const state = trafficState?.state || feature.properties?.TDASSTATE || 'UNKNOWN';
+            const speed = trafficState?.speed ?? (typeof feature.properties?.TRAFFICSPEED === 'number' ? feature.properties.TRAFFICSPEED : null);
+            const hasTdas = !!trafficState || !!feature.properties?.HASTDASDATA;
+            if (isProject) {
+              projectRoutes.push({
+                ...feature,
+                properties: {
+                  ...feature.properties,
+                  TDASSTATE: state,
+                  TRAFFICSPEED: speed,
+                  HASTDASDATA: hasTdas
+                }
+              });
             }
           }
 
-          console.log('✓ Routes drawn on map:', routesAdded, 'segments');
-
-          // Store all project routes globally for filtering
           allProjectRoutes = projectRoutes;
+          redrawRoutesOnMap();
 
           // Render the route list with current filters
           renderRouteList();
@@ -654,7 +644,6 @@
               if (distEl) distEl.textContent = '—';
             }
           }
-          if (map && allRoutes && currentPanel === 'project') zoomToProjectRoutes();
         } catch (e) {
           console.warn('Route ETA load failed', e);
         }

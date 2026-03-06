@@ -310,11 +310,7 @@ main {
   justify-content: space-between;
   align-items: center;
   font-size: 14px;
-  gap: 10px;
-}
-
-.eta-travel-row.clickable {
-  cursor: pointer;
+  gap: 8px;
   padding: 8px 12px;
   margin: 0 -4px;
   border-radius: 10px;
@@ -323,9 +319,36 @@ main {
   transition: background 0.2s, border-color 0.2s;
 }
 
-.eta-travel-row.clickable:hover {
-  background: #374151;
-  border-color: #3b82f6;
+.eta-travel-row.route-highlighted {
+  border-color: #fbbf24;
+  background: #422006;
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.3);
+}
+
+.eta-travel-row.route-hidden {
+  opacity: 0.5;
+}
+
+.eta-travel-row .route-visibility-toggle {
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 4px;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.eta-travel-row .route-visibility-toggle:hover {
+  opacity: 0.9;
+}
+
+.eta-travel-label.clickable {
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.eta-travel-row:hover .eta-travel-label.clickable {
+  color: #93c5fd;
 }
 
 .eta-row-badge {
@@ -345,7 +368,6 @@ main {
 
 .eta-travel-label {
   color: #e5e7eb;
-  flex: 1;
   min-width: 0;
 }
 
