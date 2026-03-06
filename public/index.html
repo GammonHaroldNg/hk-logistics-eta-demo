@@ -89,6 +89,30 @@
                           <span class="eta-travel-dist" id="etaHkcTyDist">—</span>
                         </span>
                       </div>
+                      <div class="eta-travel-row clickable" data-path-id="REDLAND" data-route-num="3" onclick="zoomToPath('REDLAND')" title="Zoom to route">
+                        <span class="eta-row-badge">3</span>
+                        <span class="eta-travel-label">Redland → Site</span>
+                        <span class="eta-travel-right">
+                          <span class="eta-travel-value" id="etaRedland">—</span>
+                          <span class="eta-travel-dist" id="etaRedlandDist">—</span>
+                        </span>
+                      </div>
+                      <div class="eta-travel-row clickable" data-path-id="GOLIK_MAIN" data-route-num="4" onclick="zoomToPath('GOLIK_MAIN')" title="Zoom to route">
+                        <span class="eta-row-badge">4</span>
+                        <span class="eta-travel-label">GOLIK Main → Site</span>
+                        <span class="eta-travel-right">
+                          <span class="eta-travel-value" id="etaGolikMain">—</span>
+                          <span class="eta-travel-dist" id="etaGolikMainDist">—</span>
+                        </span>
+                      </div>
+                      <div class="eta-travel-row clickable" data-path-id="ROUTE_5" data-route-num="5" onclick="zoomToPath('ROUTE_5')" title="Zoom to route">
+                        <span class="eta-row-badge">5</span>
+                        <span class="eta-travel-label">Route 5 → Site</span>
+                        <span class="eta-travel-right">
+                          <span class="eta-travel-value" id="etaRoute5">—</span>
+                          <span class="eta-travel-dist" id="etaRoute5Dist">—</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -600,29 +624,35 @@
         return '#4b5563'; // unknown
       }
 
+      const ROUTE_ETA_IDS = {
+        GAMMON_TM: { time: 'etaGammonTm', dist: 'etaGammonTmDist' },
+        HKC_TY: { time: 'etaHkcTy', dist: 'etaHkcTyDist' },
+        REDLAND: { time: 'etaRedland', dist: 'etaRedlandDist' },
+        GOLIK_MAIN: { time: 'etaGolikMain', dist: 'etaGolikMainDist' },
+        ROUTE_5: { time: 'etaRoute5', dist: 'etaRoute5Dist' }
+      };
+
       async function loadRouteEta() {
         try {
           const response = await fetch(`${API_BASE}/api/route-eta`);
           if (!response.ok) return;
           const data = await response.json();
-          const gEl = document.getElementById('etaGammonTm');
-          const gDistEl = document.getElementById('etaGammonTmDist');
-          const hEl = document.getElementById('etaHkcTy');
-          const hDistEl = document.getElementById('etaHkcTyDist');
           pathStarts = {};
-          if (data.GAMMON_TM != null) {
-            const g = data.GAMMON_TM;
-            const timeMin = (typeof g === 'number' ? g : g.travelTimeMinutes);
-            if (gEl) gEl.textContent = timeMin != null ? timeMin + ' min' : '—';
-            if (gDistEl && typeof g.distanceKm === 'number') gDistEl.textContent = g.distanceKm.toFixed(1) + ' km';
-            if (g.startPosition && g.label) pathStarts.GAMMON_TM = { lat: g.startPosition.lat, lng: g.startPosition.lng, label: g.label };
-          }
-          if (data.HKC_TY != null) {
-            const h = data.HKC_TY;
-            const timeMin = (typeof h === 'number' ? h : h.travelTimeMinutes);
-            if (hEl) hEl.textContent = timeMin != null ? timeMin + ' min' : '—';
-            if (hDistEl && typeof h.distanceKm === 'number') hDistEl.textContent = h.distanceKm.toFixed(1) + ' km';
-            if (h.startPosition && h.label) pathStarts.HKC_TY = { lat: h.startPosition.lat, lng: h.startPosition.lng, label: h.label };
+          for (const pathId of Object.keys(ROUTE_ETA_IDS)) {
+            const d = data[pathId];
+            const ids = ROUTE_ETA_IDS[pathId];
+            if (!ids) continue;
+            const timeEl = document.getElementById(ids.time);
+            const distEl = document.getElementById(ids.dist);
+            if (d != null) {
+              const timeMin = (typeof d === 'number' ? d : d.travelTimeMinutes);
+              if (timeEl) timeEl.textContent = timeMin != null ? timeMin + ' min' : '—';
+              if (distEl && typeof d.distanceKm === 'number') distEl.textContent = d.distanceKm.toFixed(1) + ' km';
+              if (d.startPosition && d.label) pathStarts[pathId] = { lat: d.startPosition.lat, lng: d.startPosition.lng, label: d.label };
+            } else {
+              if (timeEl) timeEl.textContent = '—';
+              if (distEl) distEl.textContent = '—';
+            }
           }
           if (map && allRoutes && currentPanel === 'project') zoomToProjectRoutes();
         } catch (e) {
@@ -692,7 +722,7 @@
 
         bounds.extend(endPoint);
 
-        // Start marker icon: number in circle (1 = Gammon TM, 2 = HKC TY)
+        // Start marker icon: number in circle (1–5 = routes)
         function startIcon(num) {
           return L.divIcon({
             className: 'custom-marker',
@@ -702,7 +732,7 @@
           });
         }
 
-        const pathOrder = ['GAMMON_TM', 'HKC_TY'];
+        const pathOrder = ['GAMMON_TM', 'HKC_TY', 'REDLAND', 'GOLIK_MAIN', 'ROUTE_5'];
         pathOrder.forEach((pathId, idx) => {
           const start = pathStarts[pathId];
           if (!start || start.lat == null || start.lng == null) return;

@@ -113,7 +113,7 @@ export function startDeliverySession(
 
   config = { ...sessionConfig, pathGeometries };
 
-  const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+  const base = getFirstAvailablePath(pathGeometries);
   const totalDist = base ? calculateRouteDistance(base.coordinates) : 0;
   const segmentCount = base ? base.segmentCount : 0;
 
@@ -277,7 +277,7 @@ function completeTruck(truckId: string, now: Date): void {
 
 function getBaselineTravelTime(): number {
   if (!config) return 1800;
-  const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  const base = getFirstAvailablePath(config.pathGeometries);
   if (!base) return 1800;
   const dist = calculateRouteDistance(base.coordinates);
   return (dist / Math.min(config.defaultSpeed, MIXER_MAX_SPEED)) * 3600;
@@ -398,9 +398,9 @@ export function getDeliveryStatus() {
       trucksPerHour: config.trucksPerHour,
       routeId: config.routeId,
       startTime: config.startTime.toISOString(),
-      totalSegments: (config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY)?.segmentCount ?? 0,
+      totalSegments: getFirstAvailablePath(config.pathGeometries)?.segmentCount ?? 0,
       totalDistance: (() => {
-        const base = config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+        const base = getFirstAvailablePath(config.pathGeometries);
         if (!base) return '0';
         return calculateRouteDistance(base.coordinates).toFixed(1);
       })(),
@@ -501,7 +501,9 @@ function ensureConfigForDb(): void {
       pathGeometries: {
         GAMMON_TM: { coordinates: dummyCoords, segmentCount: dummyCoords.length },
         HKC_TY: null,
-        REDLAND : null,
+        REDLAND: null,
+        GOLIK_MAIN: null,
+        ROUTE_5: null,
       },
     };
     isRunning = true;
@@ -515,7 +517,20 @@ function tripPathId(trip: DbTrip): PathId {
   if (trip.pathId) return trip.pathId;
   const plant = (trip.concrete_plant || '').toLowerCase();
   if (plant.includes('hkc') || plant.includes('tsing yi')) return 'HKC_TY';
+  if (plant.includes('redland')) return 'REDLAND';
+  if (plant.includes('golik')) return 'GOLIK_MAIN';
+  if (plant.includes('route 5') || plant.includes('route5')) return 'ROUTE_5';
   return 'GAMMON_TM';
+}
+
+/** First path that has geometry (for baseline stats when path-specific not needed). */
+function getFirstAvailablePath(geometries: DeliveryConfig['pathGeometries']): { coordinates: number[][]; segmentCount: number } | null {
+  const order: PathId[] = ['GAMMON_TM', 'HKC_TY', 'REDLAND', 'GOLIK_MAIN', 'ROUTE_5'];
+  for (const pathId of order) {
+    const p = geometries[pathId];
+    if (p?.coordinates?.length) return p;
+  }
+  return null;
 }
 
 export function addTruckFromTrip(
@@ -531,7 +546,7 @@ export function addTruckFromTrip(
   if (Number.isNaN(startTime.getTime())) return null;
 
   const pathId = tripPathId(trip);
-  const base = config.pathGeometries[pathId] || config.pathGeometries.GAMMON_TM || config.pathGeometries.HKC_TY;
+  const base = config.pathGeometries[pathId] ?? getFirstAvailablePath(config.pathGeometries);
   if (!base || !base.coordinates) return null;
 
   const totalDist = calculateRouteDistance(base.coordinates);

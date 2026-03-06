@@ -52,7 +52,7 @@ import {
   PathId,
 } from './constants/projectRoutes';
 
-
+import { buildPathGeometries } from './services/pathService';
 
 // ===== HELPERS =====
 
@@ -60,97 +60,43 @@ function findRoute(routeId: number): any {
   return getAllCorridors()[routeId] || null;
 }
 
-function segDist(a: number[], b: number[]): number {
-  const dx = a[0]! - b[0]!;
-  const dy = a[1]! - b[1]!;
-  return dx * dx + dy * dy;
+/** Which path(s) include this route segment (for map PATH_IDS and zoom) */
+function getPathIdsForRoute(routeId: number): PathId[] {
+  const ids: PathId[] = [];
+  for (const [pathId, routeIds] of Object.entries(PROJECT_PATHS)) {
+    if (routeIds.includes(routeId)) ids.push(pathId as PathId);
+  }
+  return ids;
 }
 
-function stitchPath(routeIds: number[]): { coordinates: number[][]; segmentCount: number } | null {
+const PATH_LABELS: Record<PathId, string> = {
+  GAMMON_TM: 'Gammon TM Plant → Site',
+  HKC_TY: 'HKC TY Plant → Site',
+  REDLAND: 'Redland → Site',
+  GOLIK_MAIN: 'GOLIK Main → Site',
+  ROUTE_5: 'Route 5 → Site',
+};
+
+const MIXER_MAX_SPEED_KMH = 70;
+
+/** Average speed (km/h) along a path from TDAS data, for ETA calculation */
+function getPathAverageSpeedForEta(pathId: PathId, defaultSpeed: number): number {
   const allCorridors = getAllCorridors();
-  const segments: Array<{ routeId: number; coords: number[][] }> = [];
-
+  const routeIds = PROJECT_PATHS[pathId];
+  let totalWeightedSpeed = 0;
+  let totalDistance = 0;
   for (const routeId of routeIds) {
+    const tdas = corridors[routeId];
     const corridor: any = allCorridors[routeId];
-    if (!corridor || !corridor.geometry) continue;
-    const geomType: string = corridor.geometry.type;
-    const geomCoords: any = corridor.geometry.coordinates;
-
-    const coords: number[][] = [];
-    if (geomType === "MultiLineString") {
-      for (let li = 0; li < geomCoords.length; li++) {
-        const line: any = geomCoords[li];
-        for (let ci = 0; ci < line.length; ci++) {
-          coords.push(line[ci]);
-        }
-      }
-    } else if (geomType === "LineString") {
-      for (let ci = 0; ci < geomCoords.length; ci++) {
-        coords.push(geomCoords[ci]);
-      }
-    }
-
-    if (coords.length >= 2) {
-      segments.push({ routeId, coords });
-    }
+    if (!corridor?.geometry) continue;
+    const segDist = calculateRouteDistance(corridor.geometry);
+    if (segDist <= 0) continue;
+    const speed = (tdas && tdas.speed != null && tdas.speed > 0) ? Math.min(tdas.speed, MIXER_MAX_SPEED_KMH) : Math.min(defaultSpeed, MIXER_MAX_SPEED_KMH);
+    totalWeightedSpeed += speed * segDist;
+    totalDistance += segDist;
   }
-
-  if (segments.length === 0) return null;
-
-  const START: number[] = [113.99065, 22.41476];
-  const used = new Set<number>();
-  const orderedCoords: number[][] = [];
-  let cursor: number[] = START;
-
-  for (let step = 0; step < segments.length; step++) {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    let bestReverse = false;
-
-    for (let i = 0; i < segments.length; i++) {
-      if (used.has(i)) continue;
-      const seg = segments[i]!;
-      const first = seg.coords[0]!;
-      const last = seg.coords[seg.coords.length - 1]!;
-      const dFirst = segDist(cursor, first);
-      const dLast = segDist(cursor, last);
-
-      if (dFirst < bestDist) {
-        bestDist = dFirst;
-        bestIdx = i;
-        bestReverse = false;
-      }
-      if (dLast < bestDist) {
-        bestDist = dLast;
-        bestIdx = i;
-        bestReverse = true;
-      }
-    }
-
-    if (bestIdx === -1) break;
-    used.add(bestIdx);
-
-    const matched = segments[bestIdx]!;
-    const segCoords = bestReverse ? matched.coords.slice().reverse() : matched.coords;
-
-    if (orderedCoords.length > 0) {
-      const lastAdded = orderedCoords[orderedCoords.length - 1]!;
-      const firstCoord = segCoords[0]!;
-      const startIdx = segDist(lastAdded, firstCoord) < 1e-10 ? 1 : 0;
-      for (let ci = startIdx; ci < segCoords.length; ci++) {
-        orderedCoords.push(segCoords[ci]!);
-      }
-    } else {
-      for (let ci = 0; ci < segCoords.length; ci++) {
-        orderedCoords.push(segCoords[ci]!);
-      }
-    }
-
-    cursor = orderedCoords[orderedCoords.length - 1]!;
-  }
-
-  console.log('Stitched ' + used.size + '/' + segments.length + ' segments, ' + orderedCoords.length + ' total coords');
-  return { coordinates: orderedCoords, segmentCount: used.size };
+  if (totalDistance <= 0) return Math.min(defaultSpeed, MIXER_MAX_SPEED_KMH);
+  return totalWeightedSpeed / totalDistance;
 }
 
 
@@ -255,13 +201,9 @@ async function updateTrafficData(): Promise<void> {
     }
 
     // 1) Auto‑init delivery session so path geometries + config exist
-    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
-      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
-      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
-      REDLAND: stitchPath(PROJECT_PATHS.REDLAND),
-    };
+    const pathGeometries = buildPathGeometries();
 
-    const base = pathGeometries.GAMMON_TM;
+    const base = pathGeometries.GAMMON_TM ?? pathGeometries.HKC_TY ?? pathGeometries.REDLAND ?? pathGeometries.GOLIK_MAIN ?? pathGeometries.ROUTE_5;
     if (base && base.coordinates.length > 0) {
       const targetConfig = await loadTodayDeliveryTarget();
 
@@ -472,6 +414,7 @@ app.get('/api/routes', (req: any, res: any) => {
             TRAFFICSPEED: tdas ? tdas.speed : null,
             HASTDASDATA: !!tdas,
             ISPROJECT: PROJECT_ROUTE_IDS.includes(routeId),
+            PATH_IDS: getPathIdsForRoute(routeId),
           },
           geometry: feature.geometry
         };
@@ -571,6 +514,42 @@ app.get('/api/corridors', (req: any, res: any) => {
   }
 });
 
+// ===== API: ROUTE ETA (travel time + distance per path) =====
+
+app.get('/api/route-eta', (req: any, res: any) => {
+  try {
+    const pathGeometries = buildPathGeometries();
+    const defaultSpeed = 50;
+    const result: Record<string, { travelTimeMinutes: number; distanceKm: number; startPosition?: { lat: number; lng: number }; label: string }> = {};
+
+    for (const pathId of Object.keys(PROJECT_PATHS) as PathId[]) {
+      const path = pathGeometries[pathId];
+      if (!path || !path.coordinates.length) continue;
+
+      const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
+      const speedKmh = getPathAverageSpeedForEta(pathId, defaultSpeed);
+      const travelTimeMinutes = (distanceKm / speedKmh) * 60;
+      const first = path.coordinates[0];
+      const startPosition =
+        first && first.length >= 2 && first[0] != null && first[1] != null
+          ? { lat: first[1], lng: first[0] }
+          : undefined;
+      const entry: { travelTimeMinutes: number; distanceKm: number; startPosition?: { lat: number; lng: number }; label: string } = {
+        travelTimeMinutes: Math.round(travelTimeMinutes),
+        distanceKm: Math.round(distanceKm * 10) / 10,
+        label: PATH_LABELS[pathId],
+      };
+      if (startPosition) entry.startPosition = startPosition;
+      result[pathId] = entry;
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/route-eta:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 // ===== API: TRACKING (legacy) =====
 
 app.get('/api/tracking/:routeId', (req: any, res: any) => {
@@ -627,14 +606,9 @@ app.post('/api/delivery/start', (req: any, res: any) => {
     const trucksPerHour = req.body.trucksPerHour || 12;
     const defaultSpeed = req.body.defaultSpeed || 40;
 
-    // For now, always stitch all known paths; later you can choose per request
-    const pathGeometries: Record<PathId, { coordinates: number[][]; segmentCount: number } | null> = {
-      GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM),
-      HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY),
-      REDLAND: stitchPath(PROJECT_PATHS.REDLAND),
-    };
+    const pathGeometries = buildPathGeometries();
 
-    const base = pathGeometries.GAMMON_TM || pathGeometries.HKC_TY;
+    const base = pathGeometries.GAMMON_TM ?? pathGeometries.HKC_TY ?? pathGeometries.REDLAND ?? pathGeometries.GOLIK_MAIN ?? pathGeometries.ROUTE_5;
     if (!base || base.coordinates.length === 0) {
       return res.status(400).json({ error: 'No path geometry found' });
     }

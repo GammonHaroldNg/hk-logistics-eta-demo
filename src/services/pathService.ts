@@ -13,7 +13,21 @@ function segDist(a: number[], b: number[]): number {
 const GAMMON_START: [number, number] = [113.99065, 22.41476];
 /** HKC Tsing Yi plant [lng, lat] – used as stitch start for HKC_TY path so segment order is plant → site */
 const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
-const REDLAND_START: [number, number] = [126.81315, 25.59399];
+/** Redland plant [lng, lat] – Hong Kong (was incorrectly set to Taiwan) */
+const REDLAND_START: [number, number] = [114.0, 22.45];
+/** GOLIK Main plant [lng, lat] */
+const GOLIK_MAIN_START: [number, number] = [114.08, 22.36];
+/** Route 5 start [lng, lat] */
+const ROUTE_5_START: [number, number] = [114.15, 22.42];
+
+/** Start position per path for stitching (plant → site order) */
+export const PATH_STARTS: Record<PathId, [number, number]> = {
+  GAMMON_TM: GAMMON_START,
+  HKC_TY: HKC_TY_START,
+  REDLAND: REDLAND_START,
+  GOLIK_MAIN: GOLIK_MAIN_START,
+  ROUTE_5: ROUTE_5_START,
+};
 
 /**
  * Stitch corridor segments into a continuous path ordered by proximity.
@@ -111,8 +125,10 @@ export function stitchPath(routeIds: number[], startLngLat?: [number, number]): 
  */
 export function buildPathGeometries(): Record<PathId, StitchedPath> {
   return {
-    GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM, GAMMON_START),
-    HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY, HKC_TY_START),
-    REDLAND : stitchPath(PROJECT_PATHS.REDLAND, REDLAND_START),
+    GAMMON_TM: stitchPath(PROJECT_PATHS.GAMMON_TM, PATH_STARTS.GAMMON_TM),
+    HKC_TY: stitchPath(PROJECT_PATHS.HKC_TY, PATH_STARTS.HKC_TY),
+    REDLAND: stitchPath(PROJECT_PATHS.REDLAND, PATH_STARTS.REDLAND),
+    GOLIK_MAIN: stitchPath(PROJECT_PATHS.GOLIK_MAIN, PATH_STARTS.GOLIK_MAIN),
+    ROUTE_5: stitchPath(PROJECT_PATHS.ROUTE_5, PATH_STARTS.ROUTE_5),
   };
 }
