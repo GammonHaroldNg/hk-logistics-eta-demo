@@ -29,10 +29,16 @@ export const PATH_STARTS: Record<PathId, [number, number]> = {
   ROUTE_5: ROUTE_5_START,
 };
 
+/** Tolerance for treating two points as the same (squared distance in degree²) */
+const JUNCTION_TOLERANCE_SQ = 1e-10;
+
 /**
- * Stitch corridor segments into a continuous path ordered by proximity.
- * @param routeIds - ordered list of corridor route IDs for this path
- * @param startLngLat - [lng, lat] of the path start (e.g. plant). Use the correct plant so segment order is start → site.
+ * Stitch corridor segments into a continuous path, preserving the order of routeIds.
+ * Each segment is traversed forward or reverse so it connects to the previous one (or to start for the first).
+ * Used for all 5 routes so distance is correct: Route 4 (GOLIK Main) ~10.4 km, Route 5 (GOLIK Alternative) per GeoJSON.
+ *
+ * @param routeIds - ordered list of corridor route IDs (driving order plant → site)
+ * @param startLngLat - [lng, lat] of the path start (e.g. plant)
  */
 export function stitchPath(routeIds: number[], startLngLat?: [number, number]): StitchedPath {
   const allCorridors = getAllCorridors();
@@ -65,46 +71,25 @@ export function stitchPath(routeIds: number[], startLngLat?: [number, number]): 
 
   if (segments.length === 0) return null;
 
-  const START: number[] = startLngLat ? [...startLngLat] : GAMMON_START;
-  const used = new Set<number>();
+  const start: number[] = startLngLat ? [...startLngLat] : GAMMON_START;
   const orderedCoords: number[][] = [];
-  let cursor = [...START];
+  let cursor = [...start];
 
-  for (let step = 0; step < segments.length; step++) {
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    let bestReverse = false;
+  // Process segments in array order (intended driving sequence)
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]!;
+    const first = seg.coords[0]!;
+    const last = seg.coords[seg.coords.length - 1]!;
+    const dFirst = segDist(cursor, first);
+    const dLast = segDist(cursor, last);
 
-    for (let i = 0; i < segments.length; i++) {
-      if (used.has(i)) continue;
-      const seg = segments[i]!;
-      const first = seg.coords[0]!;
-      const last = seg.coords[seg.coords.length - 1]!;
-      const dFirst = segDist(cursor, first);
-      const dLast = segDist(cursor, last);
-
-      if (dFirst < bestDist) {
-        bestDist = dFirst;
-        bestIdx = i;
-        bestReverse = false;
-      }
-      if (dLast < bestDist) {
-        bestDist = dLast;
-        bestIdx = i;
-        bestReverse = true;
-      }
-    }
-
-    if (bestIdx === -1) break;
-    used.add(bestIdx);
-
-    const matched = segments[bestIdx]!;
-    const segCoords = bestReverse ? matched.coords.slice().reverse() : matched.coords;
+    const reverse = dLast < dFirst;
+    const segCoords = reverse ? seg.coords.slice().reverse() : seg.coords;
 
     if (orderedCoords.length > 0) {
       const lastAdded = orderedCoords[orderedCoords.length - 1]!;
       const firstCoord = segCoords[0]!;
-      const startIdx = segDist(lastAdded, firstCoord) < 1e-10 ? 1 : 0;
+      const startIdx = segDist(lastAdded, firstCoord) < JUNCTION_TOLERANCE_SQ ? 1 : 0;
       for (let ci = startIdx; ci < segCoords.length; ci++) {
         orderedCoords.push(segCoords[ci]!);
       }
@@ -115,8 +100,8 @@ export function stitchPath(routeIds: number[], startLngLat?: [number, number]): 
     cursor = orderedCoords[orderedCoords.length - 1]!;
   }
 
-  console.log(`Stitched ${used.size}/${segments.length} segments, ${orderedCoords.length} total coords`);
-  return { coordinates: orderedCoords, segmentCount: used.size };
+  console.log(`Stitched ${segments.length} segments (ordered), ${orderedCoords.length} total coords`);
+  return { coordinates: orderedCoords, segmentCount: segments.length };
 }
 
 /**

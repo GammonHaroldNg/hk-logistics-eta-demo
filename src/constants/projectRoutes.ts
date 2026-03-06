@@ -58,7 +58,7 @@ export const REDLAND_PATH: RouteId[] = [
   111986, 111322, 122796, 122797, 165821, 260443, 165819, 285509, 285514,
 ];
 
-// Route 4: GOLIK Main → Site
+// Route 4: GOLIK Main → Site (~10.4 km; segment order preserved for correct distance)
 export const GOLIK_MAIN_PATH: RouteId[] = [
   95456, 95367, 97143, 95449, 95439, 95547, 95890, 95891, 95462, 95874,
   97253, 96235, 96248, 97349, 96247, 97352, 97353, 271732, 95759, 96006,
@@ -71,7 +71,7 @@ export const GOLIK_MAIN_PATH: RouteId[] = [
   111986, 111322, 122796, 122797, 165821, 260443, 165819, 285509, 285514,
 ];
 
-// Route 5 → Site
+// Route 5: GOLIK Alternative → Site (segment order preserved for correct distance)
 export const ROUTE_5_PATH: RouteId[] = [
   282650, 272924, 57549, 272923, 56994, 57414, 60196, 58983, 61767, 61720,
   60702, 62742, 61719, 59221, 62058, 61371, 60718, 60698, 57485, 57601,

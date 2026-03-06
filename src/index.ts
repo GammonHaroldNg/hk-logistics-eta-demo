@@ -203,6 +203,14 @@ async function updateTrafficData(): Promise<void> {
     // 1) Auto‑init delivery session so path geometries + config exist
     const pathGeometries = buildPathGeometries();
 
+    // Log path distances for verification (Route 4 ~10.4 km, Route 5 per GeoJSON)
+    for (const [pathId, geom] of Object.entries(pathGeometries)) {
+      if (geom?.coordinates?.length) {
+        const km = calculateRouteDistance({ type: 'LineString', coordinates: geom.coordinates }).toFixed(2);
+        console.log('Path', pathId, 'distance:', km, 'km');
+      }
+    }
+
     const base = pathGeometries.GAMMON_TM ?? pathGeometries.HKC_TY ?? pathGeometries.REDLAND ?? pathGeometries.GOLIK_MAIN ?? pathGeometries.ROUTE_5;
     if (base && base.coordinates.length > 0) {
       const targetConfig = await loadTodayDeliveryTarget();
