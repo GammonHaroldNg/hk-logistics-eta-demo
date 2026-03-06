@@ -13,12 +13,12 @@ function segDist(a: number[], b: number[]): number {
 const GAMMON_START: [number, number] = [113.99065, 22.41476];
 /** HKC Tsing Yi plant [lng, lat] – used as stitch start for HKC_TY path so segment order is plant → site */
 const HKC_TY_START: [number, number] = [114.08941691, 22.36108321];
-/** Redland plant [lng, lat] – Hong Kong (was incorrectly set to Taiwan) */
-const REDLAND_START: [number, number] = [114.0, 22.45];
+/** Redland plant [lng, lat] */
+const REDLAND_START: [number, number] = [113.91823, 22.39811];
 /** GOLIK Main plant [lng, lat] */
-const GOLIK_MAIN_START: [number, number] = [114.08, 22.36];
-/** Route 5 start [lng, lat] */
-const ROUTE_5_START: [number, number] = [114.15, 22.42];
+const GOLIK_MAIN_START: [number, number] = [114.007894, 22.435126];
+/** GOLIK Alternative start [lng, lat] */
+const ROUTE_5_START: [number, number] = [114.12576, 22.52817];
 
 /** Start position per path for stitching (plant → site order) */
 export const PATH_STARTS: Record<PathId, [number, number]> = {

@@ -518,6 +518,7 @@ function tripPathId(trip: DbTrip): PathId {
   const plant = (trip.concrete_plant || '').toLowerCase();
   if (plant.includes('hkc') || plant.includes('tsing yi')) return 'HKC_TY';
   if (plant.includes('redland')) return 'REDLAND';
+  if (plant.includes('golik alternative')) return 'ROUTE_5';
   if (plant.includes('golik')) return 'GOLIK_MAIN';
   if (plant.includes('route 5') || plant.includes('route5')) return 'ROUTE_5';
   return 'GAMMON_TM';

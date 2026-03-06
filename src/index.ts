@@ -74,7 +74,7 @@ const PATH_LABELS: Record<PathId, string> = {
   HKC_TY: 'HKC TY Plant → Site',
   REDLAND: 'Redland → Site',
   GOLIK_MAIN: 'GOLIK Main → Site',
-  ROUTE_5: 'Route 5 → Site',
+  ROUTE_5: 'GOLIK Alternative → Site',
 };
 
 const MIXER_MAX_SPEED_KMH = 70;
