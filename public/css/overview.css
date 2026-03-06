@@ -18,13 +18,21 @@ main {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: rgb(33, 40, 48);       /* was white */
-  border-left: 1px solid #4b5563;    /* darker border */
-  padding: 20px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  background: rgb(33, 40, 48);
+  border-left: 1px solid #4b5563;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* Single scrollable area for all panel content (filters, ETA card, route list) */
+.stats-panel-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .stats-panel h2 {
@@ -231,28 +239,24 @@ main {
 }
 
 #overviewPanel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  display: block;
 }
 
 .panel-fixed-top {
-  flex-shrink: 0;
+  /* no flex shrink - content flows in single scroll */
 }
 
 .panel-scroll {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  /* content flows with overall panel scroll */
 }
 
 .panel-scroll .route-list-container {
-  flex: 1 1 0;
+  /* grow with content; single scroll is on .stats-panel-scroll */
   min-height: 0;
+  overflow: visible;
+  flex: none;
 }
+
 
 #overviewPanel h3 {
   flex-shrink: 0;
