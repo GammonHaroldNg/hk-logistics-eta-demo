@@ -673,11 +673,23 @@
         if (bounds.isValid()) map.fitBounds(bounds, { padding: [80, 80], maxZoom: 15 });
       }
 
-      function refreshData() {
+      async function refreshData() {
+        const refreshBtn = document.getElementById('refreshRoutesBtn');
+        if (refreshBtn) {
+          refreshBtn.disabled = true;
+          refreshBtn.title = 'Refreshing...';
+        }
         console.log('🔄 Refreshing data...');
-        loadTrafficData();
-        loadAndDisplayRoutes();
-        loadRouteEta();
+        try {
+          await loadAndDisplayRoutes();
+          await loadTrafficData();
+        } catch (e) {
+          console.error('Refresh failed:', e);
+        }
+        if (refreshBtn) {
+          refreshBtn.disabled = false;
+          refreshBtn.title = 'Refresh';
+        }
       }
 
       function goToTracking(routeId) {
