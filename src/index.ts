@@ -77,26 +77,33 @@ const PATH_LABELS: Record<PathId, string> = {
   ROUTE_5: 'GOLIK Alternative → Site',
 };
 
-const MIXER_MAX_SPEED_KMH = 70;
+/** Max speed (km/h) for route ETA panel: cap = min(TDAS speed, this). */
+const ETA_MAX_SPEED_KMH = 60;
+/** Speed (km/h) for segments with no TDAS data in route ETA panel. */
+const ETA_DEFAULT_SPEED_NO_DATA_KMH = 40;
 
-/** Average speed (km/h) along a path from TDAS data, for ETA calculation */
-function getPathAverageSpeedForEta(pathId: PathId, defaultSpeed: number): number {
+/**
+ * Total travel time (minutes) from start to end by summing segment times.
+ * Per segment: time = distance / speed, with speed = min(TDAS, 60) or 40 if no TDAS.
+ * Overall time = sum(segment_distance / segment_speed) — no path average needed.
+ */
+function getPathTravelTimeMinutes(pathId: PathId): number {
   const allCorridors = getAllCorridors();
   const routeIds = PROJECT_PATHS[pathId];
-  let totalWeightedSpeed = 0;
-  let totalDistance = 0;
+  let totalTimeHours = 0;
   for (const routeId of routeIds) {
     const tdas = corridors[routeId];
     const corridor: any = allCorridors[routeId];
     if (!corridor?.geometry) continue;
-    const segDist = calculateRouteDistance(corridor.geometry);
-    if (segDist <= 0) continue;
-    const speed = (tdas && tdas.speed != null && tdas.speed > 0) ? Math.min(tdas.speed, MIXER_MAX_SPEED_KMH) : Math.min(defaultSpeed, MIXER_MAX_SPEED_KMH);
-    totalWeightedSpeed += speed * segDist;
-    totalDistance += segDist;
+    const segDistKm = calculateRouteDistance(corridor.geometry);
+    if (segDistKm <= 0) continue;
+    const speedKmh =
+      tdas && tdas.speed != null && tdas.speed > 0
+        ? Math.min(tdas.speed, ETA_MAX_SPEED_KMH)
+        : ETA_DEFAULT_SPEED_NO_DATA_KMH;
+    totalTimeHours += segDistKm / speedKmh;
   }
-  if (totalDistance <= 0) return Math.min(defaultSpeed, MIXER_MAX_SPEED_KMH);
-  return totalWeightedSpeed / totalDistance;
+  return totalTimeHours * 60; // minutes
 }
 
 
@@ -527,7 +534,6 @@ app.get('/api/corridors', (req: any, res: any) => {
 app.get('/api/route-eta', (req: any, res: any) => {
   try {
     const pathGeometries = buildPathGeometries();
-    const defaultSpeed = 50;
     const result: Record<string, { travelTimeMinutes: number; distanceKm: number; startPosition?: { lat: number; lng: number }; label: string }> = {};
 
     for (const pathId of Object.keys(PROJECT_PATHS) as PathId[]) {
@@ -535,8 +541,7 @@ app.get('/api/route-eta', (req: any, res: any) => {
       if (!path || !path.coordinates.length) continue;
 
       const distanceKm = calculateRouteDistance({ type: 'LineString', coordinates: path.coordinates });
-      const speedKmh = getPathAverageSpeedForEta(pathId, defaultSpeed);
-      const travelTimeMinutes = (distanceKm / speedKmh) * 60;
+      const travelTimeMinutes = getPathTravelTimeMinutes(pathId);
       const first = path.coordinates[0];
       const startPosition =
         first && first.length >= 2 && first[0] != null && first[1] != null
